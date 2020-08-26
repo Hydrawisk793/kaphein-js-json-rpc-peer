@@ -85,4 +85,67 @@ module.exports = function ()
             }
         }
     });
+
+    it("should receive notifications", async function ()
+    {
+        this.timeout(0);
+
+        try
+        {
+            await peer.open(
+                "http://localhost:3000",
+                {
+                    WebSocket,
+                }
+            );
+
+            const interval = 500;
+            const repeatCount = 4;
+
+            const values = [];
+            peer.setRpcHandler("onTimer", function (peer, req)
+            {
+                const { value } = req.params;
+
+                values.push(value);
+            });
+
+            const startTimerReturnValue = await peer.request({
+                method : "startTimer",
+                params : {
+                    interval : interval,
+                },
+            });
+
+            await wait((interval * repeatCount) + (interval / 4));
+
+            const stopTimerReturnValue = await peer.request({
+                method : "stopTimer"
+            });
+
+            assert.deepStrictEqual(values.length, repeatCount);
+            assert.deepStrictEqual(startTimerReturnValue, true);
+            assert.deepStrictEqual(stopTimerReturnValue, true);
+        }
+        finally
+        {
+            try
+            {
+                await peer.close();
+            }
+            catch(error)
+            {
+                // Does nothing.
+            }
+        }
+    });
+
+    // eslint-disable-next-line no-unused-vars
+    function wait(ms)
+    {
+        return new Promise(function (resolve)
+        {
+            setTimeout(resolve, ms);
+        });
+    }
 };

@@ -1,6 +1,6 @@
 const test = require("./suites/index.test");
 
-describe("peer", function ()
+describe("JsonRpcPeer", function ()
 {
-    describe("test", test.bind(this));
+    describe("essential features", test.bind(this));
 });

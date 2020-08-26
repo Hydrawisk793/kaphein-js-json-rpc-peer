@@ -46,9 +46,13 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
 
     public close() : Promise<void>;
 
-    public setRpcFunction(
+    public setDefaultRpcHandler(
+        handler : JsonRpcFunction
+    ) : void;
+
+    public setRpcHandler(
         method : string,
-        func : JsonRpcFunction
+        handler : JsonRpcFunction
     ) : void;
 
     public request(

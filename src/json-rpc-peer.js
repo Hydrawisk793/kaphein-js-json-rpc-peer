@@ -37,6 +37,9 @@ module.exports = (function ()
      *  @template {JsonRpcErrorJson<any>} ErrorJson
      *  @typedef {import("./json-rpc-error-response-json").JsonRpcErrorResponseJson<ErrorJson>} JsonRpcErrorResponseJson
      */
+    /**
+     *  @typedef {import("./json-rpc-peer").JsonRpcFunction} JsonRpcFunction
+     */
 
     /**
      *  @template T
@@ -97,7 +100,8 @@ module.exports = (function ()
         this._evtEmt = new EventEmitter();
         this._executions = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcExecution<any, any>]>} */(null));
         this._invocations = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcInvocation<any, any>]>} */(null));
-        this._rpcFunctions = new StringKeyMap(/** @type {Iterable<[string, Function]>} */(null));
+        this._rpcHandlers = new StringKeyMap(/** @type {Iterable<[string, JsonRpcFunction]>} */(null));
+        /** @type {JsonRpcFunction} */this._defaultRpcHandler = null;
 
         this._wsOnMessage = _wsOnMessage.bind(this);
         this._wsOnError = _wsOnError.bind(this);
@@ -226,33 +230,57 @@ module.exports = (function ()
                 }
                 thisRef._state = State.CLOSING;
 
-                var ws = thisRef._ws;
-                if(ws)
+                thisRef._invocations.forEach(function (invocation)
                 {
-                    ws.removeEventListener("message", thisRef._wsOnMessage);
-                    ws.removeEventListener("close", thisRef._wsOnClose);
+                    var id = invocation.request.id;
 
-                    if(WebSocket.CLOSED !== ws.readyState)
+                    _rejectInvocation(
+                        thisRef,
+                        id,
+                        new JsonRpcError(
+                            -32003,
+                            "RPC call " + id + " has been canceled because the JSON RPC peer is being closed."
+                        )
+                    );
+                });
+
+                resolve(Promise.allSettled(thisRef._executions.map(
+                    function (execution)
                     {
-                        ws.addEventListener("close", function (e)
-                        {
-                            _handleWsOnClose(thisRef, e);
-
-                            ws.removeEventListener("error", thisRef._wsOnError);
-
-                            resolve();
-                        }, { once : true });
+                        return execution.promise;
                     }
-                    else
-                    {
-                        ws.removeEventListener("error", thisRef._wsOnError);
-                    }
-
-                    ws.close(1000);
-                }
-
-                resolve();
+                )));
             })
+                .then(function ()
+                {
+                    return new Promise(function (resolve)
+                    {
+                        var ws = thisRef._ws;
+                        if(ws)
+                        {
+                            ws.removeEventListener("message", thisRef._wsOnMessage);
+                            ws.removeEventListener("close", thisRef._wsOnClose);
+
+                            if(WebSocket.CLOSED !== ws.readyState)
+                            {
+                                ws.addEventListener("close", function (e)
+                                {
+                                    _handleWsOnClose(thisRef, e);
+
+                                    ws.removeEventListener("error", thisRef._wsOnError);
+
+                                    resolve();
+                                }, { once : true });
+                            }
+                            else
+                            {
+                                ws.removeEventListener("error", thisRef._wsOnError);
+                            }
+
+                            ws.close(1000);
+                        }
+                    });
+                })
                 .catch(function ()
                 {
                     // Ignore errors.
@@ -274,9 +302,14 @@ module.exports = (function ()
             ;
         },
 
-        setRpcFunction : function setRpcFunction(method, func)
+        setDefaultRpcHandler : function setDefaultRpcHandler(handler)
         {
-            this._rpcFunctions.set(method, func);
+            this._defaultRpcHandler = (isFunction(handler) ? handler : null);
+        },
+
+        setRpcHandler : function setRpcHandler(method, handler)
+        {
+            this._rpcHandlers.set(method, handler);
         },
 
         /**
@@ -307,6 +340,7 @@ module.exports = (function ()
                 Omit<JsonRpcNotificationJson<any>, "jsonrpc" | "id">
                 | Omit<JsonRpcNotificationJson<any>, "jsonrpc" | "id">[]
             } req
+            @param {Record<string, any>} [option]
          */
         notify : function notify(req)
         {
@@ -649,7 +683,7 @@ module.exports = (function ()
 
             if("id" in req)
             {
-                if(null !== id && !Number.isInteger(id) && !isString(id))
+                if(!isUndefinedOrNull(id) && !Number.isInteger(id) && !isString(id))
                 {
                     throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
                 }
@@ -664,7 +698,7 @@ module.exports = (function ()
                 throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
             }
 
-            var rpcFunc = thisRef._rpcFunctions.get(method);
+            var rpcFunc = thisRef._rpcHandlers.get(method) || thisRef._defaultRpcHandler;
             if(!rpcFunc)
             {
                 throw new JsonRpcError(JsonRpcPredefinedErrorCode.METHOD_NOT_FOUND);
@@ -685,7 +719,7 @@ module.exports = (function ()
                 }
                 else
                 {
-                    errorResponseJson.error = new JsonRpcError(-32001, error.message).toJson();
+                    errorResponseJson.error = new JsonRpcError(-32002, error.message).toJson();
                 }
 
                 _trySendJson(thisRef, errorResponseJson);
@@ -706,7 +740,7 @@ module.exports = (function ()
         return new Promise(function (resolve)
         {
             /** @type {JsonRpcExecution} */var execution = null;
-            if(null !== id)
+            if(!isUndefinedOrNull(id))
             {
                 if(thisRef._executions.has(id))
                 {
@@ -720,7 +754,10 @@ module.exports = (function ()
                 thisRef._executions.set(id, execution);
             }
 
-            var promise = ((0, rpc).call(void 0, thisRef, req));
+            var promise = new Promise(function (resolve)
+            {
+                resolve((0, rpc).call(void 0, thisRef, req));
+            });
             if(execution)
             {
                 execution.promise = promise;
@@ -730,14 +767,17 @@ module.exports = (function ()
         })
             .then(function (result)
             {
-                _trySendJson(
-                    thisRef,
-                    {
-                        jsonrpc : "2.0",
-                        result : result,
-                        id : id
-                    }
-                );
+                if(!isUndefinedOrNull(id))
+                {
+                    _trySendJson(
+                        thisRef,
+                        {
+                            jsonrpc : "2.0",
+                            result : result,
+                            id : id
+                        }
+                    );
+                }
             })
             .catch(function (error)
             {
@@ -745,7 +785,7 @@ module.exports = (function ()
             })
             .then(function ()
             {
-                if(null !== id)
+                if(!isUndefinedOrNull(id))
                 {
                     thisRef._executions["delete"](id);
                 }
@@ -815,7 +855,7 @@ module.exports = (function ()
                             _rejectInvocation(
                                 thisRef,
                                 id,
-                                new JsonRpcError(-32000, "RPC call timeout.")
+                                new JsonRpcError(-32001, "RPC call timeout.")
                             );
                         }, option.timeout)
                     }
@@ -837,12 +877,15 @@ module.exports = (function ()
      */
     function _resolveInvocation(thisRef, id, result)
     {
-        var invocations = thisRef._invocations;
-        var invocation = thisRef._invocations.get(id);
-        if(invocation)
+        if(!isUndefinedOrNull(id))
         {
-            invocations["delete"](id);
-            invocation.resolve(result);
+            var invocations = thisRef._invocations;
+            var invocation = thisRef._invocations.get(id);
+            if(invocation)
+            {
+                invocations["delete"](id);
+                invocation.resolve(result);
+            }
         }
     }
 
@@ -853,12 +896,15 @@ module.exports = (function ()
      */
     function _rejectInvocation(thisRef, id, error)
     {
-        var invocations = thisRef._invocations;
-        var invocation = thisRef._invocations.get(id);
-        if(invocation)
+        if(!isUndefinedOrNull(id))
         {
-            invocations["delete"](id);
-            invocation.reject(error);
+            var invocations = thisRef._invocations;
+            var invocation = thisRef._invocations.get(id);
+            if(invocation)
+            {
+                invocations["delete"](id);
+                invocation.reject(error);
+            }
         }
     }
 

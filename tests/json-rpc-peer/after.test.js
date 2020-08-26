@@ -1,9 +1,8 @@
-after(function ()
+after(async function ()
 {
-    console.debug("after");
     const server = this.server;
     if(server)
     {
-        server.close();
+        await server.close();
     }
 });
