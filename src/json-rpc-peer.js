@@ -212,13 +212,15 @@ module.exports = (function ()
 
         close : function close()
         {
-            var WebSocket = this._WebSocket;
             var thisRef = this;
 
             return new Promise(function (resolve)
             {
                 switch(thisRef._state)
                 {
+                case State.IDLE:
+                    resolve();
+                    break;
                 case State.OPENING:
                     throw new Error("The client is being opened.");
                     // break;
@@ -226,80 +228,9 @@ module.exports = (function ()
                     throw new Error("The client is already being closed.");
                     // break;
                 default:
-                    // Does nothing.
+                    resolve(_close(thisRef));
                 }
-                thisRef._state = State.CLOSING;
-
-                thisRef._invocations.forEach(function (invocation)
-                {
-                    var id = invocation.request.id;
-
-                    _rejectInvocation(
-                        thisRef,
-                        id,
-                        new JsonRpcError(
-                            -32003,
-                            "RPC call " + id + " has been canceled because the JSON RPC peer is being closed."
-                        )
-                    );
-                });
-
-                resolve(Promise.allSettled(thisRef._executions.map(
-                    function (execution)
-                    {
-                        return execution.promise;
-                    }
-                )));
-            })
-                .then(function ()
-                {
-                    return new Promise(function (resolve)
-                    {
-                        var ws = thisRef._ws;
-                        if(ws)
-                        {
-                            ws.removeEventListener("message", thisRef._wsOnMessage);
-                            ws.removeEventListener("close", thisRef._wsOnClose);
-
-                            if(WebSocket.CLOSED !== ws.readyState)
-                            {
-                                ws.addEventListener("close", function (e)
-                                {
-                                    _handleWsOnClose(thisRef, e);
-
-                                    ws.removeEventListener("error", thisRef._wsOnError);
-
-                                    resolve();
-                                }, { once : true });
-                            }
-                            else
-                            {
-                                ws.removeEventListener("error", thisRef._wsOnError);
-                            }
-
-                            ws.close(1000);
-                        }
-                    });
-                })
-                .catch(function ()
-                {
-                    // Ignore errors.
-                })
-                .then(function ()
-                {
-                    thisRef._option = null;
-                    thisRef._WebSocket = null;
-                    thisRef._ws = null;
-
-                    thisRef._state = State.IDLE;
-                    thisRef._evtEmt.emit(
-                        "closed",
-                        {
-                            source : thisRef
-                        }
-                    );
-                })
-            ;
+            });
         },
 
         setDefaultRpcHandler : function setDefaultRpcHandler(handler)
@@ -401,7 +332,7 @@ module.exports = (function ()
     {
         _handleWsOnClose(this, e);
 
-        if(State.CLOSING !== this._state)
+        if(this._state < State.CLOSING)
         {
             _scheduleClose(this);
         }
@@ -414,13 +345,16 @@ module.exports = (function ()
     {
         setTimeout(function ()
         {
-            thisRef
-                .close()
-                .catch(function ()
-                {
-                    // Ignore errors.
-                })
-            ;
+            if(thisRef._state < State.CLOSING)
+            {
+                thisRef
+                    .close()
+                    .catch(function ()
+                    {
+                        // Ignore errors.
+                    })
+                ;
+            }
         });
     }
 
@@ -523,6 +457,90 @@ module.exports = (function ()
 
             resolve();
         });
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     */
+    function _close(thisRef)
+    {
+        var WebSocket = thisRef._WebSocket;
+
+        return new Promise(function (resolve)
+        {
+            thisRef._state = State.CLOSING;
+
+            thisRef._invocations.forEach(function (invocation)
+            {
+                var id = invocation.request.id;
+
+                _rejectInvocation(
+                    thisRef,
+                    id,
+                    new JsonRpcError(
+                        -32003,
+                        "RPC call " + id + " has been canceled because the JSON RPC peer is being closed."
+                    )
+                );
+            });
+
+            resolve(Promise.allSettled(thisRef._executions.map(
+                function (execution)
+                {
+                    return execution.promise;
+                }
+            )));
+        })
+            .then(function ()
+            {
+                return new Promise(function (resolve)
+                {
+                    var ws = thisRef._ws;
+                    if(ws)
+                    {
+                        ws.removeEventListener("message", thisRef._wsOnMessage);
+                        ws.removeEventListener("close", thisRef._wsOnClose);
+
+                        if(WebSocket.CLOSED !== ws.readyState)
+                        {
+                            ws.addEventListener("close", function (e)
+                            {
+                                _handleWsOnClose(thisRef, e);
+
+                                ws.removeEventListener("error", thisRef._wsOnError);
+
+                                resolve();
+                            }, { once : true });
+                            ws.close(1000);
+                        }
+                        else
+                        {
+                            ws.removeEventListener("error", thisRef._wsOnError);
+                            ws.close(1000);
+                            resolve();
+                        }
+                    }
+                });
+            })
+            .catch(function ()
+            {
+                // Ignore errors.
+            })
+            .then(function ()
+            {
+                thisRef._option = null;
+                thisRef._WebSocket = null;
+                thisRef._ws = null;
+
+                thisRef._state = State.IDLE;
+                thisRef._evtEmt.emit(
+                    "closed",
+                    {
+                        source : thisRef
+                    }
+                );
+            })
+        ;
     }
 
     /**
