@@ -1,6 +1,9 @@
 import { EventListenable } from "kaphein-js-event-emitter";
 
 import { JsonRpcRequestJson } from "./json-rpc-request-json";
+import { JsonRpcSuccessfulResponseJson } from "./json-rpc-successful-response-json";
+import { JsonRpcErrorResponseJson } from "./json-rpc-error-response-json";
+import { JsonRpcErrorJson } from "./json-rpc-error-json";
 
 export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventListenerMap>
 {
@@ -56,12 +59,12 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
     ) : void;
 
     public request(
-        request : Omit<JsonRpcRequestJson, "jsonrpc" | "id">,
+        request : Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">,
         option? : Record<string, any>
     ) : Promise<any>;
 
     public notify(
-        request : Omit<JsonRpcRequestJson, "jsonrpc" | "id">,
+        request : Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">,
         option? : Record<string, any>
     ) : Promise<any>;
 }
@@ -92,6 +95,18 @@ export declare interface JsonRpcPeerEventMap
 
     "closed" : {
         source : JsonRpcPeer;
+    };
+
+    "rpcCallSucceeded" : {
+        source : JsonRpcPeer;
+        request : JsonRpcRequestJson<any>;
+        response : Pick<JsonRpcSuccessfulResponseJson<any>, "id" | "result">;
+    };
+
+    "rpcCallFailed" : {
+        source : JsonRpcPeer;
+        request : JsonRpcRequestJson<any>;
+        response : Pick<JsonRpcErrorResponseJson<JsonRpcErrorJson<any>>, "id" | "error">;
     };
 
     "errorOccurred" : {

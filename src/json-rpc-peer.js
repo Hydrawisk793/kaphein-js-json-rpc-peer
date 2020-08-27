@@ -39,6 +39,7 @@ module.exports = (function ()
      */
     /**
      *  @typedef {import("./json-rpc-peer").JsonRpcFunction} JsonRpcFunction
+     *  @typedef {import("./json-rpc-peer").JsonRpcPeerEventListenerMap} JsonRpcPeerEventListenerMap
      */
 
     /**
@@ -97,7 +98,7 @@ module.exports = (function ()
         /** @type {State} */this._state = State.IDLE;
         /** @type {WebSocket} */this._ws = null;
         this._closedByError = false;
-        this._evtEmt = new EventEmitter();
+        /** @type {EventEmitter<JsonRpcPeerEventListenerMap>} */this._evtEmt = new EventEmitter();
         this._executions = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcExecution<any, any>]>} */(null));
         this._invocations = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcInvocation<any, any>]>} */(null));
         this._rpcHandlers = new StringKeyMap(/** @type {Iterable<[string, JsonRpcFunction]>} */(null));
@@ -903,6 +904,17 @@ module.exports = (function ()
             {
                 invocations["delete"](id);
                 invocation.resolve(result);
+                thisRef._evtEmt.emit(
+                    "rpcCallSucceeded",
+                    {
+                        source : thisRef,
+                        request : invocation.request,
+                        response : {
+                            id : id,
+                            result : result
+                        }
+                    }
+                );
             }
         }
     }
@@ -922,6 +934,17 @@ module.exports = (function ()
             {
                 invocations["delete"](id);
                 invocation.reject(error);
+                thisRef._evtEmt.emit(
+                    "rpcCallFailed",
+                    {
+                        source : thisRef,
+                        request : invocation.request,
+                        response : {
+                            id : id,
+                            error : error
+                        }
+                    }
+                );
             }
         }
     }
