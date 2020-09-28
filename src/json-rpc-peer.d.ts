@@ -67,6 +67,8 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
         request : Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">,
         option? : Record<string, any>
     ) : Promise<any>;
+
+    public getSocketClient() : WebSocket | null;
 }
 
 export declare type JsonRpcFunction = (

@@ -288,6 +288,11 @@ module.exports = (function ()
 
                 resolve(_invokeRemote(thisRef, null, req.method, req.params, option));
             });
+        },
+
+        getSocketClient : function getSocketClient()
+        {
+            return this._ws;
         }
     };
 
