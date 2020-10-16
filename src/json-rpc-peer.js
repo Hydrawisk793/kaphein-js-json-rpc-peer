@@ -40,6 +40,8 @@ module.exports = (function ()
     /**
      *  @typedef {import("./json-rpc-peer").JsonRpcFunction} JsonRpcFunction
      *  @typedef {import("./json-rpc-peer").JsonRpcPeerEventListenerMap} JsonRpcPeerEventListenerMap
+     *  @typedef {import("./json-rpc-peer").JsonRpcNonJsonRpcMessageHandler} JsonRpcNonJsonRpcMessageHandler
+     *  @typedef {import("./json-rpc-peer").JsonRpcNonJsonMessageHandler} JsonRpcNonJsonMessageHandler
      */
 
     /**
@@ -103,6 +105,8 @@ module.exports = (function ()
         this._invocations = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcInvocation<any, any>]>} */(null));
         this._rpcHandlers = new StringKeyMap(/** @type {Iterable<[string, JsonRpcFunction]>} */(null));
         /** @type {JsonRpcFunction} */this._defaultRpcHandler = null;
+        /** @type {JsonRpcNonJsonRpcMessageHandler} */this._nonJsonRpcMessageHandler = null;
+        /** @type {JsonRpcNonJsonMessageHandler} */this._nonJsonMessageHandler = null;
 
         this._wsOnMessage = _wsOnMessage.bind(this);
         this._wsOnError = _wsOnError.bind(this);
@@ -244,6 +248,26 @@ module.exports = (function ()
             this._rpcHandlers.set(method, handler);
         },
 
+        setNonJsonRpcMessageHandler : function setNonJsonRpcMessageHandler(handler)
+        {
+            if(!isFunction(handler))
+            {
+                throw new TypeError("'handler' must be a function.");
+            }
+
+            this._nonJsonRpcMessageHandler = handler;
+        },
+
+        setNonJsonMessageHandler : function setNonJsonMessageHandler(handler)
+        {
+            if(!isFunction(handler))
+            {
+                throw new TypeError("'handler' must be a function.");
+            }
+
+            this._nonJsonMessageHandler = handler;
+        },
+
         /**
          *  @param {
                 Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">
@@ -302,6 +326,8 @@ module.exports = (function ()
      */
     function _wsOnMessage(e)
     {
+        var isNonJsonRpcMessage = false;
+
         var data = e.data;
         if(isString(data))
         {
@@ -312,12 +338,18 @@ module.exports = (function ()
             }
             else
             {
-                this.$processNonJsonMessage(json);
+                isNonJsonRpcMessage = true;
             }
         }
         else
         {
-            this.$processNonStringMessage(json);
+            isNonJsonRpcMessage = true;
+        }
+
+        var nonJsonMessageHandler = this._nonJsonMessageHandler;
+        if(isNonJsonRpcMessage && isFunction(nonJsonMessageHandler))
+        {
+            nonJsonMessageHandler(this, data)
         }
     }
 
@@ -627,8 +659,19 @@ module.exports = (function ()
                 _rejectInvocation(thisRef, json.id, json.error);
                 break;
             default:
-                _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                if(isFunction(thisRef._nonJsonRpcMessageHandler))
+                {
+                    thisRef._nonJsonRpcMessageHandler(thisRef, json);
+                }
+                else
+                {
+                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                }
             }
+        }
+        else if(isFunction(thisRef._nonJsonMessageHandler))
+        {
+            thisRef._nonJsonMessageHandler(thisRef, json);
         }
         else
         {

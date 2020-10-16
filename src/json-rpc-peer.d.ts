@@ -58,6 +58,14 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
         handler : JsonRpcFunction
     ) : void;
 
+    public setNonJsonRpcMessageHandler(
+        handler : JsonRpcNonJsonRpcMessageHandler
+    ) : void;
+
+    public setNonJsonMessageHandler(
+        handler : JsonRpcNonJsonMessageHandler
+    ) : void;
+
     public request(
         request : Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">,
         option? : Record<string, any>
@@ -75,6 +83,16 @@ export declare type JsonRpcFunction = (
     peer : JsonRpcPeer,
     req : JsonRpcRequestJson<any>
 ) => Promise<any>;
+
+export declare type JsonRpcNonJsonRpcMessageHandler = (
+    peer : JsonRpcPeer,
+    message : any
+) => void | Promise<void>;
+
+export declare type JsonRpcNonJsonMessageHandler = (
+    peer : JsonRpcPeer,
+    message : any
+) => void | Promise<void>;
 
 export declare enum JsonRpcPeerState
 {
