@@ -12,7 +12,7 @@ module.exports = function ()
     it("should open a peer", async function ()
     {
         await peer.open(
-            "http://localhost:3000",
+            `http://localhost:${ this.server.getCurrentPort() }`,
             {
                 WebSocket,
             }
@@ -25,7 +25,7 @@ module.exports = function ()
         try
         {
             await peer.open(
-                "http://localhost:3000",
+                `http://localhost:${ this.server.getCurrentPort() }`,
                 {
                     WebSocket,
                 }
@@ -55,7 +55,7 @@ module.exports = function ()
         try
         {
             await peer.open(
-                "http://localhost:3000",
+                `http://localhost:${ this.server.getCurrentPort() }`,
                 {
                     WebSocket,
                 }
@@ -93,7 +93,7 @@ module.exports = function ()
         try
         {
             await peer.open(
-                "http://localhost:3000",
+                `http://localhost:${ this.server.getCurrentPort() }`,
                 {
                     WebSocket,
                 }

@@ -28,6 +28,11 @@ module.exports = (function ()
             this._wsOnConnection = _wsOnConnection.bind(this);
         }
 
+        getCurrentPort()
+        {
+            return (this._server ? this._server.address().port : null);
+        }
+
         /**
          *  @param {number} port
          */

@@ -4,7 +4,7 @@ const {
 
 before(async function ()
 {
-    const serverPort = 3000;
+    const serverPort = 0;
 
     const server = new TestServer();
     await server.open(serverPort);
