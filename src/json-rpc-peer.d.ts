@@ -49,6 +49,12 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
 
     public close() : Promise<void>;
 
+    public getHandlerDefaultContext() : any;
+
+    public setHandlerDefaultContext(
+        context? : any
+    ) : void;
+
     public setDefaultRpcHandler(
         handler : JsonRpcFunction
     ) : void;
@@ -80,17 +86,17 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
 }
 
 export declare type JsonRpcFunction = (
-    peer : JsonRpcPeer,
+    context : any,
     req : JsonRpcRequestJson<any>
 ) => Promise<any>;
 
 export declare type JsonRpcNonJsonRpcMessageHandler = (
-    peer : JsonRpcPeer,
+    context : any,
     message : any
 ) => void | Promise<void>;
 
 export declare type JsonRpcNonJsonMessageHandler = (
-    peer : JsonRpcPeer,
+    context : any,
     message : any
 ) => void | Promise<void>;
 

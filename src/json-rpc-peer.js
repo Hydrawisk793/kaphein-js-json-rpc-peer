@@ -100,6 +100,7 @@ module.exports = (function ()
         /** @type {State} */this._state = State.IDLE;
         /** @type {WebSocket} */this._ws = null;
         this._closedByError = false;
+        /** @type {any} */this._dfltCtx = this;
         /** @type {EventEmitter<JsonRpcPeerEventListenerMap>} */this._evtEmt = new EventEmitter();
         this._executions = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcExecution<any, any>]>} */(null));
         this._invocations = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcInvocation<any, any>]>} */(null));
@@ -238,6 +239,22 @@ module.exports = (function ()
             });
         },
 
+        getHandlerDefaultContext : function getHandlerDefaultContext()
+        {
+            return this._dfltCtx;
+        },
+
+        setHandlerDefaultContext : function setHandlerDefaultContext()
+        {
+            var context = arguments[0];
+            if(isUndefined(context))
+            {
+                context = this;
+            }
+
+            this._dfltCtx = context;
+        },
+
         setDefaultRpcHandler : function setDefaultRpcHandler(handler)
         {
             this._defaultRpcHandler = (isFunction(handler) ? handler : null);
@@ -349,7 +366,7 @@ module.exports = (function ()
         var nonJsonMessageHandler = this._nonJsonMessageHandler;
         if(isNonJsonRpcMessage && isFunction(nonJsonMessageHandler))
         {
-            nonJsonMessageHandler(this, data)
+            nonJsonMessageHandler(this._dfltCtx, data)
         }
     }
 
@@ -661,7 +678,7 @@ module.exports = (function ()
             default:
                 if(isFunction(thisRef._nonJsonRpcMessageHandler))
                 {
-                    thisRef._nonJsonRpcMessageHandler(thisRef, json);
+                    thisRef._nonJsonRpcMessageHandler(thisRef._dfltCtx, json);
                 }
                 else
                 {
@@ -671,7 +688,7 @@ module.exports = (function ()
         }
         else if(isFunction(thisRef._nonJsonMessageHandler))
         {
-            thisRef._nonJsonMessageHandler(thisRef, json);
+            thisRef._nonJsonMessageHandler(thisRef._dfltCtx, json);
         }
         else
         {
@@ -823,7 +840,7 @@ module.exports = (function ()
 
             var promise = new Promise(function (resolve)
             {
-                resolve((0, rpc).call(void 0, thisRef, req));
+                resolve((0, rpc).call(void 0, thisRef._dfltCtx, req));
             });
             if(execution)
             {
