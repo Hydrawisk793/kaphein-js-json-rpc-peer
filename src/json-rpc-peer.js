@@ -6,7 +6,6 @@ var isString = kapheinJs.isString;
 var isFunction = kapheinJs.isFunction;
 var StringKeyMap = kapheinJs.StringKeyMap;
 var EventEmitter = require("kaphein-js-event-emitter").EventEmitter;
-var ulid = require("ulid").ulid;
 
 var WebSocketClosedError = require("./web-socket-closed-error").WebSocketClosedError;
 var JsonRpcError = require("./json-rpc-error").JsonRpcError;
@@ -14,6 +13,9 @@ var JsonRpcPredefinedErrorCode = require("./json-rpc-error").JsonRpcPredefinedEr
 
 module.exports = (function ()
 {
+    // TODO
+    // 1. Exception instance와 JSON을 명확히 구별
+
     /**
      *  @typedef {ReturnType<typeof setTimeout>} TimeoutHandle
      */
@@ -57,21 +59,41 @@ module.exports = (function ()
         } JsonRpcMessage
      */
     /**
-     *  @template Params, Result
      *  @typedef {{
-            request : JsonRpcRequestJson<Params>;
-            promise : Promise<Result>;
-        }} JsonRpcExecution
-     */
-    /**
-     *  @template Params, Result
-     *  @typedef {{
-            request : JsonRpcRequestJson<Params>;
-            resolve : (response : CanBePromiseLike<Result>) => void;
+            group : JsonRpcInvocationGroup;
+            request : (JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>);
+            resolve : (response : CanBePromiseLike<any>) => void;
             reject : (response : Error) => void;
+            promise : Promise<any>;
             timeout : TimeoutHandle;
         }} JsonRpcInvocation
      */
+    /**
+     *  @typedef {{
+            isSingle : boolean;
+            invocations : JsonRpcInvocation[];
+            uncompleted : number;
+            resolve : (response : CanBePromiseLike<any>) => void;
+            reject : (response : Error) => void;
+            promise : Promise<any>;
+        }} JsonRpcInvocationGroup
+     */
+    /**
+     *  @typedef {{
+            request : JsonRpcRequestJson<any>;
+            promise : Promise<any>;
+        }} JsonRpcExecution
+     */
+
+    var evtEmtOption = {
+        xBindThis : false,
+        xEmitNewListenerEvent : false,
+        xEmitRemoveListenerEvent : false,
+        xPreventDuplicateListeners : true,
+        xRemoveFirstFoundOne : true,
+        xStrictMaxListenerCount : false,
+        xWarnIfMaxListenerCountExceeds : false
+    };
 
     /**
      *  @readonly
@@ -95,23 +117,22 @@ module.exports = (function ()
             throw new Error("ECMAScript 6 Promise is not available in this environment.");
         }
 
-        /** @type {Record<string, any>} */this._option = null;
-        /** @type {typeof WebSocket} */this._WebSocket = null;
         /** @type {State} */this._state = State.IDLE;
+        /** @type {typeof WebSocket} */this._WebSocket = null;
         /** @type {WebSocket} */this._ws = null;
-        this._closedByError = false;
+        this._wsClosedByError = false;
+        /** @type {EventEmitter<JsonRpcPeerEventListenerMap>} */this._evtEmt = new EventEmitter(evtEmtOption);
         /** @type {any} */this._dfltCtx = this;
-        /** @type {EventEmitter<JsonRpcPeerEventListenerMap>} */this._evtEmt = new EventEmitter();
-        this._executions = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcExecution<any, any>]>} */(null));
-        this._invocations = new StringKeyMap(/** @type {Iterable<[JsonRpcRequestJson<any>["id"], JsonRpcInvocation<any, any>]>} */(null));
+        this._nvocs = new StringKeyMap(/** @type {Iterable<[string, JsonRpcInvocation]>} */(null));
+        this._xecs = new StringKeyMap(/** @type {Iterable<[string, JsonRpcExecution]>} */(null));
         this._rpcHandlers = new StringKeyMap(/** @type {Iterable<[string, JsonRpcFunction]>} */(null));
-        /** @type {JsonRpcFunction} */this._defaultRpcHandler = null;
-        /** @type {JsonRpcNonJsonRpcMessageHandler} */this._nonJsonRpcMessageHandler = null;
-        /** @type {JsonRpcNonJsonMessageHandler} */this._nonJsonMessageHandler = null;
+        /** @type {JsonRpcFunction} */this._dfltRpcHandler = null;
+        /** @type {JsonRpcNonJsonRpcMessageHandler} */this._nonJsonRpcMsgHandler = null;
+        /** @type {JsonRpcNonJsonMessageHandler} */this._nonJsonMsgHandler = null;
 
         this._wsOnMessage = _wsOnMessage.bind(this);
-        this._wsOnError = _wsOnError.bind(this);
         this._wsOnClose = _wsOnClose.bind(this);
+        this._wsOnError = _wsOnError.bind(this);
     }
 
     JsonRpcPeer.prototype = {
@@ -239,6 +260,11 @@ module.exports = (function ()
             });
         },
 
+        getSocketClient : function getSocketClient()
+        {
+            return this._ws;
+        },
+
         getHandlerDefaultContext : function getHandlerDefaultContext()
         {
             return this._dfltCtx;
@@ -257,7 +283,7 @@ module.exports = (function ()
 
         setDefaultRpcHandler : function setDefaultRpcHandler(handler)
         {
-            this._defaultRpcHandler = (isFunction(handler) ? handler : null);
+            this._dfltRpcHandler = (isFunction(handler) ? handler : null);
         },
 
         setRpcHandler : function setRpcHandler(method, handler)
@@ -272,7 +298,7 @@ module.exports = (function ()
                 throw new TypeError("'handler' must be a function.");
             }
 
-            this._nonJsonRpcMessageHandler = handler;
+            this._nonJsonRpcMsgHandler = handler;
         },
 
         setNonJsonMessageHandler : function setNonJsonMessageHandler(handler)
@@ -282,58 +308,19 @@ module.exports = (function ()
                 throw new TypeError("'handler' must be a function.");
             }
 
-            this._nonJsonMessageHandler = handler;
+            this._nonJsonMsgHandler = handler;
         },
 
         /**
          *  @param {
-                Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">
-                | Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">[]
+                Omit<JsonRpcRequestJson<any>, "jsonrpc">
+                | Omit<JsonRpcRequestJson<any>, "jsonrpc">[]
             } req
             @param {Record<string, any>} [option]
          */
         request : function request(req)
         {
-            var thisRef = this;
-            var option = arguments[1];
-
-            return new Promise(function (resolve)
-            {
-                if(Array.isArray(req))
-                {
-                    throw new Error("Not implemented yet.");
-                }
-
-                resolve(_invokeRemote(thisRef, ulid(), req.method, req.params, option));
-            });
-        },
-
-        /**
-         *  @param {
-                Omit<JsonRpcNotificationJson<any>, "jsonrpc" | "id">
-                | Omit<JsonRpcNotificationJson<any>, "jsonrpc" | "id">[]
-            } req
-            @param {Record<string, any>} [option]
-         */
-        notify : function notify(req)
-        {
-            var thisRef = this;
-            var option = arguments[1];
-
-            return new Promise(function (resolve)
-            {
-                if(Array.isArray(req))
-                {
-                    throw new Error("Not implemented yet.");
-                }
-
-                resolve(_invokeRemote(thisRef, null, req.method, req.params, option));
-            });
-        },
-
-        getSocketClient : function getSocketClient()
-        {
-            return this._ws;
+            return _invokeRemote(this, req, Object.assign({}, arguments[1]));
         }
     };
 
@@ -349,7 +336,7 @@ module.exports = (function ()
         if(isString(data))
         {
             var json = _tryParseJson(data);
-            if(!isUndefined(json))
+            if(isNonNullObject(json))
             {
                 _processJsonRpcMessage(this, json);
             }
@@ -363,7 +350,7 @@ module.exports = (function ()
             isNonJsonRpcMessage = true;
         }
 
-        var nonJsonMessageHandler = this._nonJsonMessageHandler;
+        var nonJsonMessageHandler = this._nonJsonMsgHandler;
         if(isNonJsonRpcMessage && isFunction(nonJsonMessageHandler))
         {
             nonJsonMessageHandler(this._dfltCtx, data)
@@ -376,7 +363,7 @@ module.exports = (function ()
     function _wsOnError()
     {
         this._state = State.CORRUPTED;
-        this._closedByError = true;
+        this._wsClosedByError = true;
     }
 
     /**
@@ -395,22 +382,184 @@ module.exports = (function ()
 
     /**
      *  @param {JsonRpcPeer} thisRef
+     *  @param {WebSocketEventMap["close"]} e
      */
-    function _scheduleClose(thisRef)
+    function _handleWsOnClose(thisRef, e)
     {
-        setTimeout(function ()
+        var closeResult = _getCloseResult(thisRef, e);
+        if(thisRef._wsClosedByError)
         {
-            if(thisRef._state < State.CLOSING)
+            thisRef._evtEmt.emit(
+                "errorOccurred",
+                {
+                    source : thisRef,
+                    error : new WebSocketClosedError(closeResult.reason, closeResult.code)
+                }
+            );
+        }
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     *  @param {WebSocketEventMap["close"]} e
+     */
+    function _getCloseResult(thisRef, e)
+    {
+        var result = {
+            code : (
+                e.code
+                    ? e.code
+                    : (
+                        thisRef._wsClosedByError
+                            ? 1006
+                            : 1000
+                    )
+            ),
+            reason : ""
+        };
+        result.reason = (
+            e.reason
+                ? e.reason
+                : (
+                    thisRef._wsClosedByError
+                        ? "The web socket connection has been closed because of an internal web socket error."
+                        : "An unknown internal web socket error has occurred."
+                )
+        );
+
+        return result;
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     *  @param {JsonRpcPredefinedErrorCode} code
+     *  @param {number | string | null} [id]
+     *  @param {string | null} [message]
+     *  @param {any} [data]
+     */
+    function _trySendPredefinedError(thisRef, code)
+    {
+        _trySendJson(
+            thisRef,
+            _createErrorResponseJson(
+                new JsonRpcError(code, arguments[3], arguments[4]),
+                arguments[2]
+            )
+        );
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     *  @param {any} json
+     */
+    function _trySendJson(thisRef, json)
+    {
+        /** @type {Error | null} */var finalError = null;
+
+        try
+        {
+            _sendJsonText(thisRef, JSON.stringify(json));
+        }
+        catch(error)
+        {
+            finalError = error;
+        }
+
+        return finalError;
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     *  @param {string} jsonText
+     */
+    function _sendJsonText(thisRef, jsonText)
+    {
+        var ws = thisRef._ws;
+        if(ws)
+        {
+            ws.send(jsonText);
+        }
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     *  @param {JsonRpcMessage | JsonRpcMessage[]} json
+     */
+    function _processJsonRpcMessage(thisRef, json)
+    {
+        var i;
+
+        if(Array.isArray(json))
+        {
+            var methodMsgs = [];
+            var resultMsgs = [];
+            var otherMsgs = [];
+            for(i = 0; i < json.length; ++i)
             {
-                thisRef
-                    .close()
-                    .catch(function ()
-                    {
-                        // Ignore errors.
-                    })
-                ;
+                switch(_getMessageType(json[i]))
+                {
+                case "method":
+                    methodMsgs.push(json);
+                    break;
+                case "result":
+                case "error":
+                    resultMsgs.push(json);
+                    break;
+                default:
+                    otherMsgs.push(json);
+                }
             }
-        });
+
+            resultMsgs.forEach(function (msg)
+            {
+                switch(_getMessageType(msg))
+                {
+                case "result":
+                    _resolveInvocation(thisRef, msg.id, msg.result);
+                    break;
+                case "error":
+                    _rejectInvocation(thisRef, msg.id, msg.error);
+                    break;
+                default:
+                    // Does nothing.
+                }
+            });
+
+            _executeLocal(thisRef, methodMsgs);
+        }
+        else if(isNonNullObject(json))
+        {
+            var type = _getMessageType(json);
+            switch(type)
+            {
+            case "method":
+                _executeLocal(thisRef, json);
+                break;
+            case "result":
+                _resolveInvocation(thisRef, json.id, json.result);
+                break;
+            case "error":
+                _rejectInvocation(thisRef, json.id, json.error);
+                break;
+            default:
+                if(isFunction(thisRef._nonJsonRpcMsgHandler))
+                {
+                    thisRef._nonJsonRpcMsgHandler(thisRef._dfltCtx, json);
+                }
+                else
+                {
+                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                }
+            }
+        }
+        else if(isFunction(thisRef._nonJsonMsgHandler))
+        {
+            thisRef._nonJsonMsgHandler(thisRef._dfltCtx, json);
+        }
+        else
+        {
+            _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+        }
     }
 
     /**
@@ -437,7 +586,7 @@ module.exports = (function ()
             _assertCanBeOpened(thisRef);
             thisRef._state = State.OPENING;
 
-            thisRef._closedByError = false;
+            thisRef._wsClosedByError = false;
             thisRef._option = option;
 
             /** @type {typeof WebSocket} */var _WebSocket = option.WebSocket;
@@ -500,7 +649,7 @@ module.exports = (function ()
             _assertCanBeOpened(thisRef);
             thisRef._state = State.OPENING;
 
-            thisRef._closedByError = false;
+            thisRef._wsClosedByError = false;
             thisRef._option = null;
 
             thisRef._WebSocket = _WebSocket;
@@ -517,6 +666,33 @@ module.exports = (function ()
     /**
      *  @param {JsonRpcPeer} thisRef
      */
+    function _assertCanBeOpened(thisRef)
+    {
+        switch(thisRef._state)
+        {
+        case State.IDLE:
+            // Does nothing.
+            break;
+        case State.OPENING:
+            throw new Error("The peer is already being opened.");
+            // break;
+        case State.OPENED:
+            throw new Error("The peer is already opened.");
+            // break;
+        case State.CORRUPTED:
+            throw new Error("The peer is in corrupted state.");
+            // break;
+        case State.CLOSING:
+            throw new Error("The peer is being closed.");
+            // break;
+        default:
+            throw new Error("The peer is being closed.");
+        }
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     */
     function _close(thisRef)
     {
         var WebSocket = thisRef._WebSocket;
@@ -525,9 +701,9 @@ module.exports = (function ()
         {
             thisRef._state = State.CLOSING;
 
-            thisRef._invocations.forEach(function (invocation)
+            thisRef._nvocs.forEach(function (nvoc)
             {
-                var id = invocation.request.id;
+                var id = nvoc.request.id;
 
                 _rejectInvocation(
                     thisRef,
@@ -539,10 +715,10 @@ module.exports = (function ()
                 );
             });
 
-            resolve(Promise.allSettled(thisRef._executions.map(
-                function (execution)
+            resolve(Promise.allSettled(thisRef._xecs.map(
+                function (xec)
                 {
-                    return execution.promise;
+                    return xec.promise;
                 }
             )));
         })
@@ -600,358 +776,198 @@ module.exports = (function ()
 
     /**
      *  @param {JsonRpcPeer} thisRef
-     *  @param {JsonRpcMessage | JsonRpcMessage[]} json
      */
-    function _processJsonRpcMessage(thisRef, json)
+    function _scheduleClose(thisRef)
     {
-        var i;
-
-        if(Array.isArray(json))
+        setTimeout(function ()
         {
-            if(json.length < 1)
+            if(thisRef._state < State.CLOSING)
             {
-                _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-            }
-            else
-            {
-                var firstMsg = json[0];
-                var firstMsgType = _getMessageType(firstMsg);
-                var isValid = !!firstMsgType;
-                var ids = [];
-                for(i = 1; isValid && i < json.length; ++i)
-                {
-                    var msg = json[i];
-                    var msgType = _getMessageType(msg);
-                    isValid = !!msgType && _argMessageTypesHomogeneous(firstMsgType, msgType);
-                    if(isValid)
+                thisRef
+                    .close()
+                    .catch(function ()
                     {
-                        ids.push(msg.id);
-                    }
-                }
-                if(!isValid)
-                {
-                    _trySendJson(new Array(json.length).fill(_createErrorResponseJson(new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST))));
-                }
-                else
-                {
-                    switch(type)
-                    {
-                    case "method":
-                        json.forEach(function (msg)
-                        {
-                            _executeLocal(thisRef, msg);
-                        });
-                        break;
-                    case "result":
-                        json.forEach(function (msg)
-                        {
-                            _resolveInvocation(thisRef, msg.id, msg.result);
-                        });
-                        break;
-                    case "error":
-                        json.forEach(function (msg)
-                        {
-                            _rejectInvocation(thisRef, msg.id, msg.error);
-                        });
-                        break;
-                    default:
-                        // Must not happen.
-                        throw new Error("The peer failed to handle exceptional situations.");
-                    }
-                }
+                        // Ignore errors.
+                    })
+                ;
             }
-        }
-        else if(isNonNullObject(json))
-        {
-            var type = _getMessageType(json);
-            switch(type)
-            {
-            case "method":
-                _executeLocal(thisRef, json);
-                break;
-            case "result":
-                _resolveInvocation(thisRef, json.id, json.result);
-                break;
-            case "error":
-                _rejectInvocation(thisRef, json.id, json.error);
-                break;
-            default:
-                if(isFunction(thisRef._nonJsonRpcMessageHandler))
-                {
-                    thisRef._nonJsonRpcMessageHandler(thisRef._dfltCtx, json);
-                }
-                else
-                {
-                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-                }
-            }
-        }
-        else if(isFunction(thisRef._nonJsonMessageHandler))
-        {
-            thisRef._nonJsonMessageHandler(thisRef._dfltCtx, json);
-        }
-        else
-        {
-            _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-        }
+        });
     }
 
     /**
      *  @param {JsonRpcPeer} thisRef
-     *  @param {WebSocketEventMap["close"]} e
+     *  @param {
+            Omit<JsonRpcRequestJson<any>, "jsonrpc">
+            | Omit<JsonRpcRequestJson<any>, "jsonrpc">[]
+        } arg
+        @param {Record<string, any>} option
      */
-    function _handleWsOnClose(thisRef, e)
+    function _invokeRemote(thisRef, arg, option)
     {
-        var closeResult = _getCloseResult(thisRef, e);
-        if(thisRef._closedByError)
+        var isSingle = false;
+        var promise = new Promise(function (resolveNvoc, rejectNvoc)
         {
-            thisRef._evtEmt.emit(
-                "errorOccurred",
-                {
-                    source : thisRef,
-                    error : new WebSocketClosedError(closeResult.reason, closeResult.code)
-                }
-            );
-        }
-    }
-
-    /**
-     *  @param {JsonRpcPeer} thisRef
-     *  @param {WebSocketEventMap["close"]} e
-     */
-    function _getCloseResult(thisRef, e)
-    {
-        var result = {
-            code : (
-                e.code
-                    ? e.code
-                    : (
-                        thisRef._closedByError
-                            ? 1006
-                            : 1000
-                    )
-            ),
-            reason : ""
-        };
-        result.result = (
-            e.reason
-                ? e.reason
-                : (
-                    thisRef._closedByError
-                        ? "Failed to open because of an internal web socket error."
-                        : ""
-                )
-        );
-
-        return result;
-    }
-
-    /**
-     *  @param {JsonRpcPeer} thisRef
-     *  @param {JsonRpcRequestJson<any>} req
-     */
-    function _executeLocal(thisRef, req)
-    {
-        var id = req.id;
-        var method = req.method;
-
-        return new Promise(function (resolve)
-        {
-            if("2.0" !== req.jsonrpc)
+            var i;
+            /** @type {Omit<JsonRpcRequestJson<any>, "jsonrpc">[]} */var reqs = arg;
+            if(!Array.isArray(arg))
             {
-                throw new JsonRpcError(
-                    JsonRpcPredefinedErrorCode.INVALID_REQUEST,
-                    "Only JSON RPC 2.0 invocations are supported."
-                );
+                reqs = [arg];
+                isSingle = true;
             }
 
-            if("id" in req)
-            {
-                if(!isUndefinedOrNull(id) && !Number.isInteger(id) && !isString(id))
-                {
-                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-                }
-            }
-            else
-            {
-                id = null;
-            }
+            reqs = reqs.map(_filterRequest);
 
-            if(!isString(req.method))
+            /** @type {JsonRpcInvocationGroup} */var group = {
+                isSingle : isSingle,
+                invocations : [],
+                uncompleted : 0,
+                resolve : resolveNvoc,
+                reject : rejectNvoc,
+                promise : promise
+            };
+            for(i = 0; i < reqs.length; ++i)
             {
-                throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                _createInvocation(thisRef, reqs[i], group, option);
             }
-
-            var rpcFunc = thisRef._rpcHandlers.get(method) || thisRef._defaultRpcHandler;
-            if(!rpcFunc)
-            {
-                throw new JsonRpcError(JsonRpcPredefinedErrorCode.METHOD_NOT_FOUND);
-            }
-
-            resolve(_callRpc(thisRef, req, rpcFunc));
         })
-            .catch(function (error)
+            .then(function (reses)
             {
-                var errorResponseJson = {
-                    jsonrpc : "2.0",
-                    error : null,
-                    id : id
-                };
-                if(error instanceof JsonRpcError)
-                {
-                    errorResponseJson.error = error.toJson();
-                }
-                else
-                {
-                    errorResponseJson.error = new JsonRpcError(-32002, error.message).toJson();
-                }
-
-                _trySendJson(thisRef, errorResponseJson);
+                return (
+                    isSingle
+                        ? (Array.isArray(reses) && reses.length > 0 ? reses[0] : void 0)
+                        : (Array.isArray(reses) ? reses : void 0)
+                );
             })
         ;
+
+        return promise;
     }
 
     /**
      *  @param {JsonRpcPeer} thisRef
-     *  @param {JsonRpcRequestJson<any>} req
-     *  @param {*} rpc
+     *  @param {JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>} req
+     *  @param {JsonRpcInvocationGroup} group
+     *  @param {Record<string, any>} option
      */
-    function _callRpc(thisRef, req, rpc)
+    function _createInvocation(thisRef, req, group, option)
     {
-        var id = req.id;
-        var lastError = null;
-
-        return new Promise(function (resolve)
+        /** @type {JsonRpcInvocation} */var nvoc = {
+            group : group,
+            request : req,
+            resolve : null,
+            reject : null,
+            promise : null,
+            timeout : null
+        };
+        var nvocId = nvoc.request.id;
+        if(!isUndefinedOrNull(nvocId))
         {
-            /** @type {JsonRpcExecution} */var execution = null;
-            if(!isUndefinedOrNull(id))
-            {
-                if(thisRef._executions.has(id))
-                {
-                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-                }
+            group.invocations.push(nvoc);
+            thisRef._nvocs.set(nvocId, nvoc);
+        }
+        ++group.uncompleted;
+        nvoc.promise = new Promise(function (resolveTask, rejectTask)
+        {
+            nvoc.resolve = resolveTask;
+            nvoc.reject = rejectTask;
 
-                execution = {
-                    request : req,
-                    promise : null
-                };
-                thisRef._executions.set(id, execution);
+            var req = nvoc.request;
+            thisRef._ws.send(_tryStringifyJson(req));
+            if(isUndefinedOrNull(req.id))
+            {
+                resolveTask();
             }
-
-            var promise = new Promise(function (resolve)
+            else
             {
-                resolve((0, rpc).call(void 0, thisRef._dfltCtx, req));
-            });
-            if(execution)
-            {
-                execution.promise = promise;
+                setTimeout(
+                    function ()
+                    {
+                        rejectTask(new Error("A RPC call timeout has been reached."));
+                    },
+                    (
+                        (
+                            Number.isSafeInteger(option.timeout)
+                            && option.timeout >= 0
+                        )
+                            ? option.timeout
+                            : 3000
+                    )
+                );
             }
-
-            resolve(promise);
         })
             .then(function (result)
             {
-                if(!isUndefinedOrNull(id))
+                if(!isUndefined(result))
                 {
-                    _trySendJson(
-                        thisRef,
-                        {
-                            jsonrpc : "2.0",
-                            result : result,
-                            id : id
-                        }
-                    );
+                    nvoc.result = result;
                 }
+                _finishInvocation(thisRef, nvoc);
+
+                return result;
             })
             .catch(function (error)
             {
-                lastError = error;
-            })
-            .then(function ()
-            {
-                if(!isUndefinedOrNull(id))
-                {
-                    thisRef._executions["delete"](id);
-                }
-
-                if(lastError)
-                {
-                    throw lastError;
-                }
+                nvoc.error = error;
+                _finishInvocation(thisRef, nvoc);
             })
         ;
+
+        return nvoc;
     }
 
     /**
      *  @param {JsonRpcPeer} thisRef
-     *  @param {number | string | null} id
-     *  @param {string} method
-     *  @param {any} [params]
-     *  @param {Record<string, any>} [option]
+     *  @param {JsonRpcInvocation} nvoc
      */
-    function _invokeRemote(thisRef, id, method)
+    function _finishInvocation(thisRef, nvoc)
     {
-        var params = arguments[3];
-        var option = Object.assign(
-            {
-                timeout : 3000
-            },
-            arguments[4]
-        );
+        nvoc.timeout = null;
 
-        return new Promise(function (resolve, reject)
+        var group = nvoc.group;
+        var nvocId = nvoc.request.id;
+        if(!isUndefinedOrNull(nvocId))
         {
-            var ws = thisRef._ws;
-            if(!ws || State.OPENED !== thisRef._state)
-            {
-                throw new Error("The client is not opened.");
-            }
+            thisRef._nvocs["delete"](nvocId);
+        }
+        --group.uncompleted;
 
-            /** @type {JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>} */var req = {
-                jsonrpc : "2.0",
-                method : method
-            };
-            if(!isUndefinedOrNull(id))
+        if(group.uncompleted < 1)
+        {
+            var results = group.invocations.map(function (nvoc)
             {
-                req.id = id;
-            }
-            if(!isUndefined(params))
-            {
-                req.params = params;
-            }
+                var resultDesc = {
+                    request : nvoc.request,
+                    result : nvoc.result,
+                    error : nvoc.error
+                };
+                if("error" in nvoc)
+                {
+                    resultDesc.error = nvoc.error;
+                }
+                else if("result" in nvoc)
+                {
+                    resultDesc.result = nvoc.result;
+                }
 
-            var reqText = _tryStringifyJson(req);
-            if(isUndefined(reqText))
-            {
-                throw new TypeError("'params' must be serializable to JSON.");
-            }
+                return resultDesc;
+            });
 
-            if(!isUndefinedOrNull(id))
+            setTimeout(function ()
             {
-                thisRef._invocations.set(
-                    id,
-                    {
-                        request : req,
-                        resolve : resolve,
-                        reject : reject,
-                        timeout : setTimeout(function ()
+                if(State.OPENED === thisRef._state)
+                {
+                    thisRef._evtEmt.emit(
+                        "invocationFinished",
                         {
-                            _rejectInvocation(
-                                thisRef,
-                                id,
-                                new JsonRpcError(-32001, "RPC call timeout.")
-                            );
-                        }, option.timeout)
-                    }
-                );
-                ws.send(reqText);
-            }
-            else
-            {
-                ws.send(reqText);
-                resolve();
-            }
-        });
+                            source : thisRef,
+                            results : results
+                        }
+                    );
+                }
+            });
+
+            group.resolve(results);
+        }
     }
 
     /**
@@ -963,23 +979,10 @@ module.exports = (function ()
     {
         if(!isUndefinedOrNull(id))
         {
-            var invocations = thisRef._invocations;
-            var invocation = thisRef._invocations.get(id);
-            if(invocation)
+            var nvoc = thisRef._nvocs.get(id);
+            if(nvoc)
             {
-                invocations["delete"](id);
-                invocation.resolve(result);
-                thisRef._evtEmt.emit(
-                    "rpcCallSucceeded",
-                    {
-                        source : thisRef,
-                        request : invocation.request,
-                        response : {
-                            id : id,
-                            result : result
-                        }
-                    }
-                );
+                nvoc.resolve(result);
             }
         }
     }
@@ -993,96 +996,171 @@ module.exports = (function ()
     {
         if(!isUndefinedOrNull(id))
         {
-            var invocations = thisRef._invocations;
-            var invocation = thisRef._invocations.get(id);
-            if(invocation)
+            var nvoc = thisRef._nvocs.get(id);
+            if(nvoc)
             {
-                invocations["delete"](id);
-                invocation.reject(error);
-                thisRef._evtEmt.emit(
-                    "rpcCallFailed",
-                    {
-                        source : thisRef,
-                        request : invocation.request,
-                        response : {
-                            id : id,
-                            error : error
-                        }
-                    }
-                );
+                nvoc.reject(error);
             }
         }
     }
 
     /**
      *  @param {JsonRpcPeer} thisRef
-     *  @param {JsonRpcPredefinedErrorCode} code
-     *  @param {number | string | null} [id]
-     *  @param {string | null} [message]
-     *  @param {any} [data]
+     *  @param {
+            (JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>)
+            | (JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>)[]
+        } arg
      */
-    function _trySendPredefinedError(thisRef, code)
+    function _executeLocal(thisRef, arg)
     {
-        _trySendJson(
-            thisRef,
-            _createErrorResponseJson(
-                new JsonRpcError(code, arguments[3], arguments[4]),
-                arguments[2]
-            )
-        );
+        var isSingle = false;
+
+        return new Promise(function (resolve)
+        {
+            /** @type {(JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>)[]} */var reqs = arg;
+            if(!Array.isArray(reqs))
+            {
+                reqs = [arg];
+                isSingle = true;
+            }
+
+            var i;
+            var tasks = [];
+            for(i = 0; i < reqs.length; ++i)
+            {
+                var req = reqs[i];
+
+                if("2.0" !== req.jsonrpc)
+                {
+                    throw new JsonRpcError(
+                        JsonRpcPredefinedErrorCode.INVALID_REQUEST,
+                        "Only JSON-RPC 2.0 RPC calls are supported."
+                    );
+                }
+
+                var id = null;
+                if("id" in req)
+                {
+                    id = req.id;
+
+                    if(!isUndefinedOrNull(id) && !Number.isInteger(id) && !isString(id))
+                    {
+                        throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                    }
+                }
+
+                var method = req.method;
+                if(!isString(method))
+                {
+                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                }
+
+                var rpcFunc = thisRef._rpcHandlers.get(method) || thisRef._dfltRpcHandler;
+                if(!rpcFunc)
+                {
+                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.METHOD_NOT_FOUND);
+                }
+
+                tasks.push(_callRpcHandler(thisRef, req, rpcFunc));
+            }
+
+            resolve(Promise.all(tasks));
+        })
+            .then(function (responses)
+            {
+                _trySendJson(thisRef, (isSingle ? responses[0] : responses));
+            })
+            .catch(function (error)
+            {
+                thisRef._evtEmt.emit(
+                    "errorOccurred",
+                    {
+                        source : thisRef,
+                        error : error
+                    }
+                );
+            })
+        ;
     }
 
     /**
      *  @param {JsonRpcPeer} thisRef
-     *  @param {any} json
+     *  @param {JsonRpcRequestJson<any>} req
+     *  @param {JsonRpcFunction} rpcHandler
      */
-    function _trySendJson(thisRef, json)
+    function _callRpcHandler(thisRef, req, rpcHandler)
     {
-        /** @type {Error | null} */var finalError = null;
+        var id = req.id;
 
-        try
+        return new Promise(function (resolve)
         {
-            _sendJsonText(thisRef, JSON.stringify(json));
-        }
-        catch(error)
-        {
-            finalError = error;
-        }
+            /** @type {JsonRpcExecution} */var xec = null;
+            if(!isUndefinedOrNull(id))
+            {
+                if(thisRef._xecs.has(id))
+                {
+                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                }
 
-        return finalError;
-    }
+                xec = {
+                    request : req,
+                    promise : null
+                };
+                thisRef._xecs.set(id, xec);
+            }
 
-    // /**
-    //  *  @param {JsonRpcPeer} thisRef
-    //  *  @param {string} jsonText
-    //  */
-    // function _trySendJsonText(thisRef, jsonText)
-    // {
-    //     /** @type {Error | null} */var finalError = null;
+            var promise = new Promise(function (resolve)
+            {
+                resolve((0, rpcHandler).call(void 0, thisRef._dfltCtx, req));
+            });
+            if(xec)
+            {
+                xec.promise = promise;
+            }
 
-    //     try
-    //     {
-    //         _sendJsonText(thisRef, jsonText);
-    //     }
-    //     catch(error)
-    //     {
-    //         finalError = error;
-    //     }
+            resolve(promise);
+        })
+            .then(function (result)
+            {
+                if(!isUndefinedOrNull(id))
+                {
+                    thisRef._xecs["delete"](id);
+                }
 
-    //     return finalError;
-    // }
+                /** @type {JsonRpcSuccessfulResponseJson<any>} */var responseJson = {
+                    jsonrpc : "2.0",
+                    result : result
+                };
+                if(!isUndefinedOrNull(id))
+                {
+                    responseJson.id = id;
+                }
 
-    /**
-     *  @param {JsonRpcPeer} thisRef
-     *  @param {string} jsonText
-     */
-    function _sendJsonText(thisRef, jsonText)
-    {
-        var ws = thisRef._ws;
-        if(ws)
-        {
-            ws.send(jsonText);
-        }
+                return responseJson;
+            })
+            .catch(function (error)
+            {
+                if(!isUndefinedOrNull(id))
+                {
+                    thisRef._xecs["delete"](id);
+                }
+
+                /** @type {JsonRpcErrorResponseJson<any>} */var responseJson = {
+                    jsonrpc : "2.0",
+                    error : (
+                        error instanceof JsonRpcError
+                            ? error.toJson()
+                            : new JsonRpcError(-32002, error.message).toJson()
+                    )
+                };
+                if(!isUndefinedOrNull(id))
+                {
+                    responseJson.id = id;
+                }
+
+                return responseJson;
+            })
+        ;
     }
 
     /**
@@ -1109,15 +1187,62 @@ module.exports = (function ()
     }
 
     /**
-     *  @param {string} lhs
-     *  @param {string} rhs
+     *  @param {JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>} req
+     *  @returns {JsonRpcRequestJson<any> | JsonRpcNotificationJson<any>}
      */
-    function _argMessageTypesHomogeneous(lhs, rhs)
+    function _filterRequest(req)
     {
-        var _lhs = (("result" === lhs || "error" === rhs) ? "resultOrError" : lhs);
-        var _rhs = (("result" === rhs || "error" === rhs) ? "resultOrError" : rhs);
+        var method = req.method;
+        if(!isString(method))
+        {
+            throw new TypeError("'method' must be a string.");
+        }
 
-        return _lhs === _rhs;
+        /** @type {typeof req} */var finalReq = {
+            jsonrpc : "2.0",
+            method : method
+        };
+
+        var id = req.id;
+        if(!isUndefinedOrNull(id))
+        {
+            finalReq.id = id;
+        }
+
+        var params = req.params;
+        if(!isUndefined(params))
+        {
+            finalReq.params = params;
+        }
+
+        var reqText = _tryStringifyJson(finalReq);
+        if(isUndefined(reqText))
+        {
+            throw new Error("'params' must be serializable as JSON.");
+        }
+
+        return finalReq;
+    }
+
+    /**
+     *  @template {JsonRpcError<any>} E
+     *  @param {E} jsonRpcError
+     *  @param {number | string | null} [id]
+     */
+    function _createErrorResponseJson(jsonRpcError)
+    {
+        /** @type {JsonRpcErrorResponseJson<ReturnType<E["toJson"]>>} */var errorResJson = {
+            jsonrpc : "2.0",
+            error : jsonRpcError.toJson()
+        };
+
+        var id = arguments[1];
+        if(!isUndefined(id))
+        {
+            errorResJson.id = id;
+        }
+
+        return errorResJson;
     }
 
     /**
@@ -1125,7 +1250,7 @@ module.exports = (function ()
      */
     function _tryParseJson(text)
     {
-        var json = null;
+        var json = void 0;
 
         try
         {
@@ -1148,7 +1273,7 @@ module.exports = (function ()
 
         try
         {
-            text = JSON.stringify(json);
+            text = _stringifyJson(json);
         }
         catch(error)
         {
@@ -1158,51 +1283,9 @@ module.exports = (function ()
         return text;
     }
 
-    /**
-     *  @template {JsonRpcError<any>} E
-     *  @param {E} jsonRpcError
-     *  @param {number | string | null} [id]
-     */
-    function _createErrorResponseJson(jsonRpcError)
+    function _stringifyJson(json)
     {
-        /** @type {JsonRpcErrorResponseJson<ReturnType<E["toJson"]>>} */var errorResJson = {
-            jsonrpc : "2.0",
-            error : jsonRpcError.toJson()
-        };
-
-        if(!isUndefined(arguments[1]))
-        {
-            errorResJson.id = arguments[1];
-        }
-
-        return errorResJson;
-    }
-
-    /**
-     *  @param {JsonRpcPeer} thisRef
-     */
-    function _assertCanBeOpened(thisRef)
-    {
-        switch(thisRef._state)
-        {
-        case State.IDLE:
-            // Does nothing.
-            break;
-        case State.OPENING:
-            throw new Error("The peer is already being opened.");
-            // break;
-        case State.OPENED:
-            throw new Error("The peer is already opened.");
-            // break;
-        case State.CORRUPTED:
-            throw new Error("The peer is in corrupted state.");
-            // break;
-        case State.CLOSING:
-            throw new Error("The peer is being closed.");
-            // break;
-        default:
-            throw new Error("The peer is being closed.");
-        }
+        return JSON.stringify(json);
     }
 
     /**

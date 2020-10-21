@@ -49,6 +49,8 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
 
     public close() : Promise<void>;
 
+    public getSocketClient() : WebSocket | null;
+
     public getHandlerDefaultContext() : any;
 
     public setHandlerDefaultContext(
@@ -73,16 +75,14 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
     ) : void;
 
     public request(
-        request : Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">,
-        option? : Record<string, any>
-    ) : Promise<any>;
+        request : Omit<JsonRpcRequestJson<any>, "jsonrpc">,
+        option? : JsonRpcRequestOption
+    ) : Promise<JsonRpcSuccessfulResponseJson | JsonRpcErrorResponseJson> | void;
 
-    public notify(
-        request : Omit<JsonRpcRequestJson<any>, "jsonrpc" | "id">,
-        option? : Record<string, any>
-    ) : Promise<any>;
-
-    public getSocketClient() : WebSocket | null;
+    public request(
+        requests : Omit<JsonRpcRequestJson<any>, "jsonrpc">[],
+        option? : JsonRpcRequestOption
+    ) : Promise<(JsonRpcSuccessfulResponseJson | JsonRpcErrorResponseJson)[]>;
 }
 
 export declare type JsonRpcFunction = (
@@ -123,22 +123,24 @@ export declare interface JsonRpcPeerEventMap
         source : JsonRpcPeer;
     };
 
-    "rpcCallSucceeded" : {
-        source : JsonRpcPeer;
-        request : JsonRpcRequestJson<any>;
-        response : Pick<JsonRpcSuccessfulResponseJson<any>, "id" | "result">;
-    };
-
-    "rpcCallFailed" : {
-        source : JsonRpcPeer;
-        request : JsonRpcRequestJson<any>;
-        response : Pick<JsonRpcErrorResponseJson<JsonRpcErrorJson<any>>, "id" | "error">;
-    };
-
     "errorOccurred" : {
         source : JsonRpcPeer;
         error : Error;
     };
+
+    "invocationFinished" : {
+        source : JsonRpcPeer;
+        results : ({
+            request : JsonRpcRequestJson<any>;
+            result? : any;
+            error? : Error;
+        })[];
+    };
+}
+
+export declare interface JsonRpcRequestOption
+{
+    timeout? : number;
 }
 
 export declare type JsonRpcPeerEventListenerMap = {

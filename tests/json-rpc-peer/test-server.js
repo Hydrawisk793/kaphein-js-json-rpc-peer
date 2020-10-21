@@ -120,10 +120,10 @@ module.exports = (function ()
 
                 const peer = new JsonRpcPeer();
                 this._peer = peer;
-                peer.once("closed", function ()
-                {
-                    console.debug("[REMOTE]", "closed");
-                });
+                // peer.once("closed", function ()
+                // {
+                //     console.debug("[REMOTE]", "closed");
+                // });
                 peer.once("errorOccurred", function (e)
                 {
                     console.error("[REMOTE]", e.error);
@@ -165,7 +165,7 @@ module.exports = (function ()
                         this._timerValue = 0;
                         const handler = () =>
                         {
-                            this._peer.notify({
+                            this._peer.request({
                                 method : "onTimer",
                                 params : {
                                     value : this._timerValue++,
