@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "noEmit": true,
+        "strict": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "lib": [
+            "dom",
+            "dom.iterable",
+            "esnext"
+        ]
+    },
+    "include": [
+        "src"
+    ],
+    "exclude": [
+        "dist",
+        "node_modules",
+        "**/node_modules/*"
+    ]
+}
