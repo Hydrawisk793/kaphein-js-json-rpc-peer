@@ -548,7 +548,7 @@ module.exports = (function ()
                 }
                 else
                 {
-                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST, json.id);
                 }
             }
         }
@@ -558,7 +558,7 @@ module.exports = (function ()
         }
         else
         {
-            _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+            _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST, json.id);
         }
     }
 
