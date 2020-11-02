@@ -935,21 +935,19 @@ module.exports = (function ()
         {
             var results = group.invocations.map(function (nvoc)
             {
-                var resultDesc = {
-                    request : nvoc.request,
-                    result : nvoc.result,
-                    error : nvoc.error
+                var nvocReturnValue = {
+                    id : nvoc.request.id
                 };
                 if("error" in nvoc)
                 {
-                    resultDesc.error = nvoc.error;
+                    nvocReturnValue.error = nvoc.error;
                 }
                 else if("result" in nvoc)
                 {
-                    resultDesc.result = nvoc.result;
+                    nvocReturnValue.result = nvoc.result;
                 }
 
-                return resultDesc;
+                return nvocReturnValue;
             });
 
             setTimeout(function ()
