@@ -77,12 +77,12 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
     public request(
         request : Omit<JsonRpcRequestJson<any>, "jsonrpc">,
         option? : JsonRpcRequestOption
-    ) : Promise<JsonRpcSuccessfulResponseJson | JsonRpcErrorResponseJson> | void;
+    ) : Promise<JsonRpcRequestReturnValue> | void;
 
     public request(
         requests : Omit<JsonRpcRequestJson<any>, "jsonrpc">[],
         option? : JsonRpcRequestOption
-    ) : Promise<(JsonRpcSuccessfulResponseJson | JsonRpcErrorResponseJson)[]>;
+    ) : Promise<JsonRpcRequestReturnValue[]>;
 }
 
 export declare type JsonRpcFunction = (
@@ -99,6 +99,11 @@ export declare type JsonRpcNonJsonMessageHandler = (
     context : any,
     message : any
 ) => void | Promise<void>;
+
+export declare type JsonRpcRequestReturnValue =
+    Omit<JsonRpcSuccessfulResponseJson<any>, "jsonrpc">
+    | Omit<JsonRpcErrorResponseJson<JsonRpcErrorJson<any>>, "jsonrpc">
+;
 
 export declare enum JsonRpcPeerState
 {

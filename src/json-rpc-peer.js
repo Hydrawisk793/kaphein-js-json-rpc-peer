@@ -548,7 +548,7 @@ module.exports = (function ()
                 }
                 else
                 {
-                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                    _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST, json.id);
                 }
             }
         }
@@ -558,7 +558,7 @@ module.exports = (function ()
         }
         else
         {
-            _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+            _trySendPredefinedError(thisRef, JsonRpcPredefinedErrorCode.INVALID_REQUEST, json.id);
         }
     }
 
@@ -935,21 +935,19 @@ module.exports = (function ()
         {
             var results = group.invocations.map(function (nvoc)
             {
-                var resultDesc = {
-                    request : nvoc.request,
-                    result : nvoc.result,
-                    error : nvoc.error
+                var nvocReturnValue = {
+                    id : nvoc.request.id
                 };
                 if("error" in nvoc)
                 {
-                    resultDesc.error = nvoc.error;
+                    nvocReturnValue.error = nvoc.error;
                 }
                 else if("result" in nvoc)
                 {
-                    resultDesc.result = nvoc.result;
+                    nvocReturnValue.result = nvoc.result;
                 }
 
-                return resultDesc;
+                return nvocReturnValue;
             });
 
             setTimeout(function ()
@@ -1028,40 +1026,7 @@ module.exports = (function ()
             var tasks = [];
             for(i = 0; i < reqs.length; ++i)
             {
-                var req = reqs[i];
-
-                if("2.0" !== req.jsonrpc)
-                {
-                    throw new JsonRpcError(
-                        JsonRpcPredefinedErrorCode.INVALID_REQUEST,
-                        "Only JSON-RPC 2.0 RPC calls are supported."
-                    );
-                }
-
-                var id = null;
-                if("id" in req)
-                {
-                    id = req.id;
-
-                    if(!isUndefinedOrNull(id) && !Number.isInteger(id) && !isString(id))
-                    {
-                        throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-                    }
-                }
-
-                var method = req.method;
-                if(!isString(method))
-                {
-                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
-                }
-
-                var rpcFunc = thisRef._rpcHandlers.get(method) || thisRef._dfltRpcHandler;
-                if(!rpcFunc)
-                {
-                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.METHOD_NOT_FOUND);
-                }
-
-                tasks.push(_callRpcHandler(thisRef, req, rpcFunc));
+                tasks.push(_callRpcHandler(thisRef, reqs[i]));
             }
 
             resolve(Promise.all(tasks));
@@ -1086,14 +1051,35 @@ module.exports = (function ()
     /**
      *  @param {JsonRpcPeer} thisRef
      *  @param {JsonRpcRequestJson<any>} req
-     *  @param {JsonRpcFunction} rpcHandler
      */
-    function _callRpcHandler(thisRef, req, rpcHandler)
+    function _callRpcHandler(thisRef, req)
     {
         var id = req.id;
 
         return new Promise(function (resolve)
         {
+            if("2.0" !== req.jsonrpc)
+            {
+                throw new JsonRpcError(
+                    JsonRpcPredefinedErrorCode.INVALID_REQUEST,
+                    "Only JSON-RPC 2.0 RPC calls are supported."
+                );
+            }
+
+            if("id" in req)
+            {
+                if(!isUndefinedOrNull(id) && !Number.isInteger(id) && !isString(id))
+                {
+                    throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+                }
+            }
+
+            var method = req.method;
+            if(!isString(method))
+            {
+                throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
+            }
+
             /** @type {JsonRpcExecution} */var xec = null;
             if(!isUndefinedOrNull(id))
             {
@@ -1107,6 +1093,12 @@ module.exports = (function ()
                     promise : null
                 };
                 thisRef._xecs.set(id, xec);
+            }
+
+            var rpcHandler = (thisRef._rpcHandlers.get(method) || thisRef._dfltRpcHandler || null);
+            if(!rpcHandler)
+            {
+                throw new JsonRpcError(JsonRpcPredefinedErrorCode.METHOD_NOT_FOUND);
             }
 
             var promise = new Promise(function (resolve)

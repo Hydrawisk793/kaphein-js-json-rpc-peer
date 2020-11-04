@@ -189,6 +189,38 @@ module.exports = function ()
         }
     });
 
+    it("should fail to call non existing method", async function ()
+    {
+        this.timeout(0);
+
+        try
+        {
+            await peer.open(
+                `http://localhost:${ this.server.getCurrentPort() }`,
+                {
+                    WebSocket,
+                }
+            );
+
+            const res = (await peer.request({
+                id : ulid(),
+                method : "methodThatDoesNotExist",
+            }));
+            assert.isObject(res.error);
+        }
+        finally
+        {
+            try
+            {
+                await peer.close();
+            }
+            catch(error)
+            {
+                // Does nothing.
+            }
+        }
+    });
+
     // eslint-disable-next-line no-unused-vars
     function wait(ms)
     {
