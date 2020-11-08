@@ -8,9 +8,27 @@ export declare class JsonRpcError<Data = any> extends Error
         data? : Data
     );
 
+    public constructor(
+        src : JsonRpcError
+    );
+
+    public constructor(
+        message : string
+    );
+
     public readonly code : number;
 
-    public readonly data : Data;
+    public readonly data : Data | null;
+
+    public hasData() : boolean;
+
+    public assign(
+        other : JsonRpcError | null
+    ) : this;
+
+    public assignJson(
+        json : JsonRpcErrorJson | null
+    ) : this;
 
     public toJson() : JsonRpcErrorJson<Data>;
 }
