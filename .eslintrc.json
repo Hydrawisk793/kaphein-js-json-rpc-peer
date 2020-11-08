@@ -18,6 +18,12 @@
     "plugins": [],
     "settings" : {},
     "rules": {
+        "no-trailing-spaces" : [
+            "error",
+            {
+                "ignoreComments" : true
+            }
+        ],
         "quotes": ["error", "double"],
         "brace-style" : ["error", "allman"],
         "indent" : [
