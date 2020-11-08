@@ -118,6 +118,7 @@ module.exports = (function ()
         }
 
         /** @type {State} */this._state = State.IDLE;
+        this._promise = Promise.resolve();
         /** @type {typeof WebSocket} */this._WebSocket = null;
         /** @type {WebSocket} */this._ws = null;
         this._wsClosedByError = false;
@@ -178,86 +179,41 @@ module.exports = (function ()
             return this._state;
         },
 
-        open : function open(arg)
+        open : function open(arg0)
         {
+            var arg1 = arguments[1];
+
             var thisRef = this;
-            var option = arguments[1];
 
-            return new Promise(function (resolve)
-            {
-                var promise = null;
-                if(isString(arg))
-                {
-                    promise = _openWithUrl(thisRef, arg, option);
-                }
-                else if(_isInstanceOfWebSocket(arg))
-                {
-                    promise = _openWithWebSocket(thisRef, arg);
-                }
-                else
-                {
-                    throw new TypeError("The first parameter must be either a string or an instance of 'WebSocket'.");
-                }
-
-                resolve(promise);
-            })
+            var promise = this._promise
                 .then(function ()
                 {
-                    thisRef._state = State.OPENED;
-                    thisRef._evtEmt.emit(
-                        "opened",
-                        {
-                            source : thisRef
-                        }
-                    );
-                })
-                .catch(function (error)
-                {
-                    thisRef._state = State.CORRUPTED;
-                    thisRef._evtEmt.emit(
-                        "errorOccurred",
-                        {
-                            source : thisRef,
-                            error : error
-                        }
-                    );
-
-                    return thisRef
-                        .close()
-                        .catch(function ()
-                        {
-                            // Ignore errors.
-                        })
-                        .then(function ()
-                        {
-                            throw error;
-                        })
-                    ;
+                    return _open(thisRef, arg0, arg1);
                 })
             ;
+
+            this._promise = promise
+                .catch(function ()
+                {
+                    return _close(thisRef);
+                })
+            ;
+
+            return promise;
         },
 
         close : function close()
         {
             var thisRef = this;
 
-            return new Promise(function (resolve)
-            {
-                switch(thisRef._state)
+            var promise = this._promise
+                .then(function ()
                 {
-                case State.IDLE:
-                    resolve();
-                    break;
-                case State.OPENING:
-                    throw new Error("The client is being opened.");
-                    // break;
-                case State.CLOSING:
-                    throw new Error("The client is already being closed.");
-                    // break;
-                default:
-                    resolve(_close(thisRef));
-                }
-            });
+                    return _close(thisRef);
+                })
+            ;
+
+            return promise;
         },
 
         getSocketClient : function getSocketClient()
@@ -564,6 +520,64 @@ module.exports = (function ()
 
     /**
      *  @param {JsonRpcPeer} thisRef
+     *  @param {any} arg0
+     *  @param {any} [arg1]
+     */
+    function _open(thisRef, arg0)
+    {
+        var arg1 = arguments[2];
+
+        return new Promise(function (resolve)
+        {
+            if(State.IDLE !== thisRef._state)
+            {
+                throw new Error("The client is not in idle state.");
+            }
+
+            var promise = null;
+            if(isString(arg0))
+            {
+                promise = _openWithUrl(thisRef, arg0, arg1);
+            }
+            else if(_isInstanceOfWebSocket(arg0))
+            {
+                promise = _openWithWebSocket(thisRef, arg0);
+            }
+            else
+            {
+                throw new TypeError("The first parameter must be either a string or an instance of 'WebSocket'.");
+            }
+
+            resolve(promise);
+        })
+            .then(function ()
+            {
+                thisRef._state = State.OPENED;
+                thisRef._evtEmt.emit(
+                    "opened",
+                    {
+                        source : thisRef
+                    }
+                );
+            })
+            .catch(function (error)
+            {
+                thisRef._state = State.CORRUPTED;
+                thisRef._evtEmt.emit(
+                    "errorOccurred",
+                    {
+                        source : thisRef,
+                        error : error
+                    }
+                );
+
+                throw error;
+            })
+        ;
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
      *  @param {string} url
      *  @param {Record<string, any>} [option]
      */
@@ -695,12 +709,31 @@ module.exports = (function ()
      */
     function _close(thisRef)
     {
+        return new Promise(function (resolve)
+        {
+            switch(thisRef._state)
+            {
+            case State.OPENED:
+            case State.CORRUPTED:
+                resolve(_cleanUp(thisRef));
+                break;
+            default:
+                resolve();
+            }
+        });
+    }
+
+    /**
+     *  @param {JsonRpcPeer} thisRef
+     */
+    function _cleanUp(thisRef)
+    {
         var WebSocket = thisRef._WebSocket;
+
+        thisRef._state = State.CLOSING;
 
         return new Promise(function (resolve)
         {
-            thisRef._state = State.CLOSING;
-
             thisRef._nvocs.forEach(function (nvoc)
             {
                 var id = nvoc.request.id;
@@ -751,6 +784,10 @@ module.exports = (function ()
                             resolve();
                         }
                     }
+                    else
+                    {
+                        resolve();
+                    }
                 });
             })
             .catch(function ()
@@ -781,16 +818,16 @@ module.exports = (function ()
     {
         setTimeout(function ()
         {
-            if(thisRef._state < State.CLOSING)
-            {
-                thisRef
-                    .close()
-                    .catch(function ()
-                    {
-                        // Ignore errors.
-                    })
-                ;
-            }
+            thisRef._promise = thisRef._promise
+                .then(function ()
+                {
+                    return _close(thisRef);
+                })
+                .catch(function ()
+                {
+                    // Ignore errors.
+                })
+            ;
         });
     }
 
