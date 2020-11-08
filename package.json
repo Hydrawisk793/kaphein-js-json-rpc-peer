@@ -6,7 +6,7 @@
     "scripts": {
         "lint": "tsc --project tsconfig.dts.json && eslint src/**/*.js",
         "lint:fix": "npm run lint -- --fix",
-        "test": "mocha tests/**/*.test.js",
+        "test": "mocha tests/index.js",
         "build": "rm -rf dist && npm run lint && webpack --mode production --config webpack.config.js",
         "prepack": "npm install && npm run build"
     },

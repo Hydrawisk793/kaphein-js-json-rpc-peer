@@ -8,7 +8,7 @@ const {
     JsonRpcPeer,
     JsonRpcError,
     JsonRpcPredefinedErrorCode,
-} = require("../../src");
+} = require("../src");
 
 module.exports = (function ()
 {
