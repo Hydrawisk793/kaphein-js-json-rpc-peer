@@ -213,6 +213,8 @@ module.exports = (function ()
                 })
             ;
 
+            this._promise = promise;
+
             return promise;
         },
 
