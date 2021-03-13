@@ -1,12 +1,10 @@
-var path = require("path");
-
-var CopyWebpackPlugin = require("copy-webpack-plugin");
-var TerserPlugin = require("terser-webpack-plugin");
-var nodeExternals = require("webpack-node-externals");
+const path = require("path");
+const CopyWebpackPlugin = require("copy-webpack-plugin");
+const nodeExternals = require("webpack-node-externals");
 
 module.exports = (function ()
 {
-    var outputDirectoryName = "dist";
+    const outputDirectoryName = "dist";
 
     return {
         entry : path.resolve(__dirname, "src", "index.js"),
@@ -17,10 +15,6 @@ module.exports = (function ()
             library : "kapheinJsJsonRpcPeer",
             libraryTarget : "umd",
             globalObject : "this"
-        },
-        optimization : {
-            minimize : true,
-            minimizer : [new TerserPlugin()]
         },
         plugins : [
             new CopyWebpackPlugin({
