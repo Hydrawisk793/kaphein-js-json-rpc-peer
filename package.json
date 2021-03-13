@@ -8,7 +8,7 @@
         "lint": "tsc --project tsconfig.dts.json && eslint src/**/*.js",
         "lint:fix": "npm run lint -- --fix",
         "test": "mocha tests/index.js",
-        "build": "rm -rf dist && npm run lint && webpack --mode production --config webpack.config.js",
+        "build": "rm -rf dist && npm run lint && npm run test && webpack --mode production --config webpack.config.js",
         "prepack": "npm install && npm run build"
     },
     "author": "Hydrawisk793",
