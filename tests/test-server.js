@@ -2,7 +2,7 @@ const http = require("http");
 const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
 const { ulid } = require("ulid");
-const { StringKeyMap } = require("kaphein-js");
+const { StringKeyMap } = require("kaphein-js-collection");
 
 const {
     JsonRpcPeer,

@@ -1,0 +1,11 @@
+{
+    "env": {
+        "browser": true,
+        "es6": true,
+        "node": false,
+        "commonjs": true
+    },
+    "parserOptions": {
+        "ecmaVersion": 3
+    }
+}
