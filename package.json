@@ -3,6 +3,7 @@
     "version": "0.3.1",
     "description": "",
     "main": "dist/index.js",
+    "types": "dis/index.d.ts",
     "scripts": {
         "lint": "tsc --project tsconfig.dts.json && eslint src/**/*.js",
         "lint:fix": "npm run lint -- --fix",
