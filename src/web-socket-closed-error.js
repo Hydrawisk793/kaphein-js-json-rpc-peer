@@ -1,5 +1,5 @@
-var kapheinJs = require("kaphein-js");
-var extendClass = kapheinJs.extendClass;
+var kapheinJsObjectUtils = require("kaphein-js-object-utils");
+var extendClass = kapheinJsObjectUtils.extendClass;
 
 module.exports = (function ()
 {

@@ -1,10 +1,11 @@
-var kapheinJs = require("kaphein-js");
-var isUndefined = kapheinJs.isUndefined;
-var isUndefinedOrNull = kapheinJs.isUndefinedOrNull;
-var isNonNullObject = kapheinJs.isNonNullObject;
-var isString = kapheinJs.isString;
-var isFunction = kapheinJs.isFunction;
-var StringKeyMap = kapheinJs.StringKeyMap;
+var kapheinJsTypeTrait = require("kaphein-js-type-trait");
+var isUndefined = kapheinJsTypeTrait.isUndefined;
+var isDefinedAndNotNull = kapheinJsTypeTrait.isDefinedAndNotNull;
+var isNonNullObject = kapheinJsTypeTrait.isNonNullObject;
+var isString = kapheinJsTypeTrait.isString;
+var isFunction = kapheinJsTypeTrait.isFunction;
+var kapheinJsCollection = require("kaphein-js-collection");
+var StringKeyMap = kapheinJsCollection.StringKeyMap;
 var EventEmitter = require("kaphein-js-event-emitter").EventEmitter;
 
 var WebSocketClosedError = require("./web-socket-closed-error").WebSocketClosedError;
@@ -899,7 +900,7 @@ module.exports = (function ()
             timeout : null
         };
         var nvocId = nvoc.request.id;
-        if(!isUndefinedOrNull(nvocId))
+        if(isDefinedAndNotNull(nvocId))
         {
             group.invocations.push(nvoc);
             thisRef._nvocs.set(nvocId, nvoc);
@@ -912,7 +913,7 @@ module.exports = (function ()
 
             var req = nvoc.request;
             thisRef._ws.send(_tryStringifyJson(req));
-            if(isUndefinedOrNull(req.id))
+            if(!isDefinedAndNotNull(req.id))
             {
                 resolveTask();
             }
@@ -964,7 +965,7 @@ module.exports = (function ()
 
         var group = nvoc.group;
         var nvocId = nvoc.request.id;
-        if(!isUndefinedOrNull(nvocId))
+        if(isDefinedAndNotNull(nvocId))
         {
             thisRef._nvocs["delete"](nvocId);
         }
@@ -1014,7 +1015,7 @@ module.exports = (function ()
      */
     function _resolveInvocation(thisRef, id, result)
     {
-        if(!isUndefinedOrNull(id))
+        if(isDefinedAndNotNull(id))
         {
             var nvoc = thisRef._nvocs.get(id);
             if(nvoc)
@@ -1031,7 +1032,7 @@ module.exports = (function ()
      */
     function _rejectInvocation(thisRef, id, error)
     {
-        if(!isUndefinedOrNull(id))
+        if(isDefinedAndNotNull(id))
         {
             var nvoc = thisRef._nvocs.get(id);
             if(nvoc)
@@ -1107,7 +1108,7 @@ module.exports = (function ()
 
             if("id" in req)
             {
-                if(!isUndefinedOrNull(id) && !Number.isInteger(id) && !isString(id))
+                if(isDefinedAndNotNull(id) && !Number.isInteger(id) && !isString(id))
                 {
                     throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
                 }
@@ -1120,7 +1121,7 @@ module.exports = (function ()
             }
 
             /** @type {JsonRpcExecution} */var xec = null;
-            if(!isUndefinedOrNull(id))
+            if(isDefinedAndNotNull(id))
             {
                 if(thisRef._xecs.has(id))
                 {
@@ -1153,7 +1154,7 @@ module.exports = (function ()
         })
             .then(function (result)
             {
-                if(!isUndefinedOrNull(id))
+                if(isDefinedAndNotNull(id))
                 {
                     thisRef._xecs["delete"](id);
                 }
@@ -1162,7 +1163,7 @@ module.exports = (function ()
                     jsonrpc : "2.0",
                     result : result
                 };
-                if(!isUndefinedOrNull(id))
+                if(isDefinedAndNotNull(id))
                 {
                     responseJson.id = id;
                 }
@@ -1171,7 +1172,7 @@ module.exports = (function ()
             })
             .catch(function (error)
             {
-                if(!isUndefinedOrNull(id))
+                if(isDefinedAndNotNull(id))
                 {
                     thisRef._xecs["delete"](id);
                 }
@@ -1184,7 +1185,7 @@ module.exports = (function ()
                             : new JsonRpcError(-32002, error.message).toJson()
                     )
                 };
-                if(!isUndefinedOrNull(id))
+                if(isDefinedAndNotNull(id))
                 {
                     responseJson.id = id;
                 }
@@ -1235,7 +1236,7 @@ module.exports = (function ()
         };
 
         var id = req.id;
-        if(!isUndefinedOrNull(id))
+        if(isDefinedAndNotNull(id))
         {
             finalReq.id = id;
         }

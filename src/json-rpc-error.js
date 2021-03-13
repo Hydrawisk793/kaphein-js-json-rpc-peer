@@ -1,8 +1,9 @@
-var kapheinJs = require("kaphein-js");
-var isUndefined = kapheinJs.isUndefined;
-var isUndefinedOrNull = kapheinJs.isUndefinedOrNull;
-var isString = kapheinJs.isString;
-var extendClass = kapheinJs.extendClass;
+var kapheinJsTypeTrait = require("kaphein-js-type-trait");
+var isUndefined = kapheinJsTypeTrait.isUndefined;
+var isDefinedAndNotNull = kapheinJsTypeTrait.isDefinedAndNotNull;
+var isString = kapheinJsTypeTrait.isString;
+var kapheinJsObjectUtils = require("kaphein-js-object-utils");
+var extendClass = kapheinJsObjectUtils.extendClass;
 
 module.exports = (function ()
 {
@@ -108,17 +109,17 @@ module.exports = (function ()
              */
             assignJson : function assignJson(json)
             {
-                if(isUndefinedOrNull(json))
-                {
-                    _setCode(this, 32000);
-                    _setMessage(this, "Server error");
-                    _setData(this);
-                }
-                else
+                if(isDefinedAndNotNull(json))
                 {
                     _setCode(this, json.code);
                     _setMessage(this, json.message);
                     _setData(this, json.data);
+                }
+                else
+                {
+                    _setCode(this, 32000);
+                    _setMessage(this, "Server error");
+                    _setData(this);
                 }
 
                 return this;
@@ -172,7 +173,16 @@ module.exports = (function ()
      */
     function _setMessage(thisRef, message)
     {
-        if(isUndefinedOrNull(message))
+        if(isDefinedAndNotNull(message))
+        {
+            if(!isString(message))
+            {
+                throw new TypeError("'message' must be a string.");
+            }
+
+            thisRef.message = message;
+        }
+        else
         {
             if(thisRef.code >= -32099 && thisRef.code <= -32000)
             {
@@ -186,15 +196,6 @@ module.exports = (function ()
             {
                 thisRef.message = "Unknown error";
             }
-        }
-        else
-        {
-            if(!isString(message))
-            {
-                throw new TypeError("'message' must be a string.");
-            }
-
-            thisRef.message = message;
         }
     }
 
