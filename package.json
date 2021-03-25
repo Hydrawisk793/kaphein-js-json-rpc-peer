@@ -1,9 +1,9 @@
 {
     "name": "kaphein-js-json-rpc-peer",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "description": "",
     "main": "dist/index.js",
-    "types": "dis/index.d.ts",
+    "types": "dist/index.d.ts",
     "scripts": {
         "lint": "tsc --project tsconfig.dts.json && eslint src/**/*.js",
         "lint:fix": "npm run lint -- --fix",
