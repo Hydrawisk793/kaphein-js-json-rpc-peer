@@ -799,10 +799,6 @@ module.exports = (function ()
             })
             .then(function ()
             {
-                thisRef._option = null;
-                thisRef._WebSocket = null;
-                thisRef._ws = null;
-
                 thisRef._state = State.IDLE;
                 thisRef._evtEmt.emit(
                     "closed",
