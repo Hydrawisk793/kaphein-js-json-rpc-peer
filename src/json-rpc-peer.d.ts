@@ -44,7 +44,8 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
     ) : Promise<void>;
 
     public open(
-        ws : WebSocket
+        ws : WebSocket,
+        ownsSocket? : boolean
     ) : Promise<void>;
 
     public close() : Promise<void>;
