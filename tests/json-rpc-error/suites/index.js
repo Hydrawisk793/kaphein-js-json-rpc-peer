@@ -1,8 +1,5 @@
-const constructor = require("./constructor.test");
-const assign = require("./assign.test");
-
 module.exports = function ()
 {
-    constructor();
-    assign();
+    require("./constructor.test")();
+    require("./assign.test")();
 };

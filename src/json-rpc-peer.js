@@ -123,6 +123,7 @@ module.exports = (function ()
         /** @type {typeof WebSocket} */this._WebSocket = null;
         /** @type {WebSocket} */this._ws = null;
         this._wsClosedByError = false;
+        this._wsOwned = false;
         /** @type {EventEmitter<JsonRpcPeerEventListenerMap>} */this._evtEmt = new EventEmitter(evtEmtOption);
         /** @type {any} */this._dfltCtx = this;
         this._nvocs = new StringKeyMap(/** @type {Iterable<[string, JsonRpcInvocation]>} */(null));
@@ -544,7 +545,7 @@ module.exports = (function ()
             }
             else if(_isInstanceOfWebSocket(arg0))
             {
-                promise = _openWithWebSocket(thisRef, arg0);
+                promise = _openWithWebSocket(thisRef, arg0, arg1);
             }
             else
             {
@@ -615,6 +616,7 @@ module.exports = (function ()
 
             var ws = new _WebSocket(url);
             thisRef._ws = ws;
+            thisRef._wsOwned = true;
 
             function onOpened()
             {
@@ -647,9 +649,12 @@ module.exports = (function ()
     /**
      *  @param {JsonRpcPeer} thisRef
      *  @param {WebSocket} ws
+     *  @param {boolean} [ownsSocket]
      */
     function _openWithWebSocket(thisRef, ws)
     {
+        var ownsSocket = !!arguments[2];
+
         return new Promise(function (resolve)
         {
             if(!_isInstanceOfWebSocket(ws))
@@ -671,6 +676,7 @@ module.exports = (function ()
 
             thisRef._WebSocket = _WebSocket;
             thisRef._ws = ws;
+            thisRef._wsOwned = ownsSocket;
 
             ws.addEventListener("error", thisRef._wsOnError);
             ws.addEventListener("message", thisRef._wsOnMessage);
@@ -768,22 +774,30 @@ module.exports = (function ()
                         ws.removeEventListener("message", thisRef._wsOnMessage);
                         ws.removeEventListener("close", thisRef._wsOnClose);
 
-                        if(WebSocket.CLOSED !== ws.readyState)
+                        if(thisRef._wsOwned)
                         {
-                            ws.addEventListener("close", function (e)
+                            if(WebSocket.CLOSED !== ws.readyState)
                             {
-                                _handleWsOnClose(thisRef, e);
+                                ws.addEventListener("close", function (e)
+                                {
+                                    _handleWsOnClose(thisRef, e);
 
+                                    ws.removeEventListener("error", thisRef._wsOnError);
+
+                                    resolve();
+                                }, { once : true });
+                                ws.close(1000);
+                            }
+                            else
+                            {
                                 ws.removeEventListener("error", thisRef._wsOnError);
-
+                                ws.close(1000);
                                 resolve();
-                            }, { once : true });
-                            ws.close(1000);
+                            }
                         }
                         else
                         {
                             ws.removeEventListener("error", thisRef._wsOnError);
-                            ws.close(1000);
                             resolve();
                         }
                     }
@@ -799,10 +813,6 @@ module.exports = (function ()
             })
             .then(function ()
             {
-                thisRef._option = null;
-                thisRef._WebSocket = null;
-                thisRef._ws = null;
-
                 thisRef._state = State.IDLE;
                 thisRef._evtEmt.emit(
                     "closed",

@@ -1,13 +1,13 @@
 {
     "name": "kaphein-js-json-rpc-peer",
-    "version": "0.3.3",
+    "version": "0.4.0",
     "description": "",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
         "lint": "tsc --project tsconfig.dts.json && eslint src/**/*.js",
         "lint:fix": "npm run lint -- --fix",
-        "test": "mocha tests/index.js",
+        "test": "mocha tests/index.test.js",
         "build": "rm -rf dist && npm run lint && npm run test && webpack --mode production --config webpack.config.js",
         "prepack": "npm install && npm run build"
     },
