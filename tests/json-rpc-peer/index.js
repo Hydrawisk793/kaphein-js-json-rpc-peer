@@ -1,5 +1,4 @@
 const { TestServer } = require("../test-server");
-const suites = require("./suites");
 
 module.exports = function ()
 {
@@ -22,5 +21,5 @@ module.exports = function ()
         }
     });
 
-    suites(this);
+    require("./suites")(this);
 };
