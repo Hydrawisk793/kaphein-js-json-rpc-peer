@@ -243,7 +243,9 @@ module.exports = (function ()
 
         setDefaultRpcHandler : function setDefaultRpcHandler(handler)
         {
-            this._dfltRpcHandler = (isFunction(handler) ? handler : null);
+            _assertIsFunctionOrNull(handler, "handler");
+
+            this._dfltRpcHandler = handler;
         },
 
         getRpcHandler : function getRpcHandler(method)
@@ -274,20 +276,14 @@ module.exports = (function ()
 
         setNonJsonRpcMessageHandler : function setNonJsonRpcMessageHandler(handler)
         {
-            if(!isFunction(handler))
-            {
-                throw new TypeError("'handler' must be a function.");
-            }
+            _assertIsFunctionOrNull(handler, "handler");
 
             this._nonJsonRpcMsgHandler = handler;
         },
 
         setNonJsonMessageHandler : function setNonJsonMessageHandler(handler)
         {
-            if(!isFunction(handler))
-            {
-                throw new TypeError("'handler' must be a function.");
-            }
+            _assertIsFunctionOrNull(handler, "handler");
 
             this._nonJsonMsgHandler = handler;
         },
@@ -1349,6 +1345,17 @@ module.exports = (function ()
     function _stringifyJson(json)
     {
         return JSON.stringify(json);
+    }
+
+    /**
+     *  @param {string} name
+     */
+    function _assertIsFunctionOrNull(v, name)
+    {
+        if(null !== v || !isFunction(v))
+        {
+            throw new TypeError("'" + name + "' must be null or a function.");
+        }
     }
 
     /**
