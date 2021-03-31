@@ -54,12 +54,21 @@ module.exports = function ()
         },
     };
 
-    it("should register a RPC handler.", function ()
+    it("should set a RPC handler.", function ()
     {
         const peer = new JsonRpcPeer();
 
         peer.setRpcHandler("add", handlers.add);
         expect(peer.getRpcHandler("add")).to.equal(handlers.add);
+    });
+
+    it("should not allow setting different RPC handlers for a same method name.", function ()
+    {
+        const peer = new JsonRpcPeer();
+
+        peer.setRpcHandler("add", handlers.add);
+        expect(() => peer.setRpcHandler("add", handlers.add)).to.not.throw();
+        expect(() => peer.setRpcHandler("add", handlers.subtract)).to.throw();
     });
 
     it("should remove a specified handler.", function ()

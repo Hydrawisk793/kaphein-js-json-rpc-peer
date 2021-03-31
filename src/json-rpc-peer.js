@@ -253,6 +253,17 @@ module.exports = (function ()
 
         setRpcHandler : function setRpcHandler(method, handler)
         {
+            if(!isFunction(handler))
+            {
+                throw new TypeError("'handler' must be a function.");
+            }
+
+            var oldHandler = this._rpcHandlers.get(method);
+            if(oldHandler && oldHandler !== handler)
+            {
+                throw new Error("Two or more different handlers for '" + method + "' method is not allowed.");
+            }
+
             this._rpcHandlers.set(method, handler);
         },
 
