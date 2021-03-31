@@ -243,30 +243,47 @@ module.exports = (function ()
 
         setDefaultRpcHandler : function setDefaultRpcHandler(handler)
         {
-            this._dfltRpcHandler = (isFunction(handler) ? handler : null);
+            _assertIsFunctionOrNull(handler, "handler");
+
+            this._dfltRpcHandler = handler;
+        },
+
+        getRpcHandler : function getRpcHandler(method)
+        {
+            return this._rpcHandlers.get(method) || null;
         },
 
         setRpcHandler : function setRpcHandler(method, handler)
-        {
-            this._rpcHandlers.set(method, handler);
-        },
-
-        setNonJsonRpcMessageHandler : function setNonJsonRpcMessageHandler(handler)
         {
             if(!isFunction(handler))
             {
                 throw new TypeError("'handler' must be a function.");
             }
+
+            var oldHandler = this._rpcHandlers.get(method);
+            if(oldHandler && oldHandler !== handler)
+            {
+                throw new Error("Two or more different handlers for '" + method + "' method is not allowed.");
+            }
+
+            this._rpcHandlers.set(method, handler);
+        },
+
+        removeRpcHandler : function removeRpcHandler(method)
+        {
+            this._rpcHandlers["delete"](method);
+        },
+
+        setNonJsonRpcMessageHandler : function setNonJsonRpcMessageHandler(handler)
+        {
+            _assertIsFunctionOrNull(handler, "handler");
 
             this._nonJsonRpcMsgHandler = handler;
         },
 
         setNonJsonMessageHandler : function setNonJsonMessageHandler(handler)
         {
-            if(!isFunction(handler))
-            {
-                throw new TypeError("'handler' must be a function.");
-            }
+            _assertIsFunctionOrNull(handler, "handler");
 
             this._nonJsonMsgHandler = handler;
         },
@@ -1328,6 +1345,17 @@ module.exports = (function ()
     function _stringifyJson(json)
     {
         return JSON.stringify(json);
+    }
+
+    /**
+     *  @param {string} name
+     */
+    function _assertIsFunctionOrNull(v, name)
+    {
+        if(null !== v || !isFunction(v))
+        {
+            throw new TypeError("'" + name + "' must be null or a function.");
+        }
     }
 
     /**

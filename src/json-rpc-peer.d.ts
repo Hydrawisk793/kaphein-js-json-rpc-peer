@@ -59,20 +59,28 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
     ) : void;
 
     public setDefaultRpcHandler(
-        handler : JsonRpcFunction
+        handler : JsonRpcFunction | null
     ) : void;
+
+    public getRpcHandler(
+        method : string
+    ) : JsonRpcFunction | null;
 
     public setRpcHandler(
         method : string,
         handler : JsonRpcFunction
     ) : void;
 
+    public removeRpcHandler(
+        method : string
+    ) : void;
+
     public setNonJsonRpcMessageHandler(
-        handler : JsonRpcNonJsonRpcMessageHandler
+        handler : JsonRpcNonJsonRpcMessageHandler | null
     ) : void;
 
     public setNonJsonMessageHandler(
-        handler : JsonRpcNonJsonMessageHandler
+        handler : JsonRpcNonJsonMessageHandler | null
     ) : void;
 
     public request(

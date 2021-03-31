@@ -1,5 +1,5 @@
-describe("JsonRpcPeer", function ()
+describe("kaphein-js-json-rpc-peer", function ()
 {
-    describe("JsonRpcError", require("./json-rpc-error"));
-    describe("JsonRpcPeer", require("./json-rpc-peer"));
+    describe("JsonRpcError", require("./json-rpc-error").bind(this));
+    describe("JsonRpcPeer", require("./json-rpc-peer").bind(this));
 });
