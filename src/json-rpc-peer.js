@@ -1352,7 +1352,7 @@ module.exports = (function ()
      */
     function _assertIsFunctionOrNull(v, name)
     {
-        if(null !== v || !isFunction(v))
+        if(null !== v && !isFunction(v))
         {
             throw new TypeError("'" + name + "' must be null or a function.");
         }
