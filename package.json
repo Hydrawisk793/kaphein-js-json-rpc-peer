@@ -1,9 +1,29 @@
 {
     "name": "kaphein-js-json-rpc-peer",
     "version": "0.4.0",
-    "description": "",
+    "description": "A JSON RPC peer implementation based on web socket client.",
+    "author": "Hydrawisk793",
+    "license": "MIT",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "keywords": [
+        "rpc",
+        "jsonrpc",
+        "json-rpc",
+        "peer",
+        "websocket"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Hydrawisk793/kaphein-js-json-rpc-peer.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Hydrawisk793/kaphein-js-json-rpc-peer/issues"
+    },
+    "homepage": "https://github.com/Hydrawisk793/kaphein-js-json-rpc-peer#readme",
     "scripts": {
         "lint": "tsc --project tsconfig.dts.json && eslint src/**/*.js",
         "lint:fix": "npm run lint -- --fix",
@@ -11,8 +31,6 @@
         "build": "rm -rf dist && npm run lint && npm run test && webpack --mode production --config webpack.config.js",
         "prepack": "npm install && npm run build"
     },
-    "author": "Hydrawisk793",
-    "license": "MIT",
     "dependencies": {
         "kaphein-js-collection": ">=0.1.0 <0.4.0",
         "kaphein-js-event-emitter": "~0.1.2",
