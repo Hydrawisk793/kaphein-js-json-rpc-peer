@@ -246,9 +246,19 @@ module.exports = (function ()
             this._dfltRpcHandler = (isFunction(handler) ? handler : null);
         },
 
+        getRpcHandler : function getRpcHandler(method)
+        {
+            return this._rpcHandlers.get(method) || null;
+        },
+
         setRpcHandler : function setRpcHandler(method, handler)
         {
             this._rpcHandlers.set(method, handler);
+        },
+
+        removeRpcHandler : function removeRpcHandler(method)
+        {
+            this._rpcHandlers["delete"](method);
         },
 
         setNonJsonRpcMessageHandler : function setNonJsonRpcMessageHandler(handler)
