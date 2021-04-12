@@ -2,12 +2,14 @@ const http = require("http");
 const WebSocket = require("ws");
 const WebSocketServer = WebSocket.Server;
 const { ulid } = require("ulid");
+const { isString } = require("kaphein-js-type-trait");
 const { StringKeyMap } = require("kaphein-js-collection");
 
 const {
     JsonRpcPeer,
     JsonRpcError,
     JsonRpcPredefinedErrorCode,
+    JsonRpcPeerState,
 } = require("../src");
 
 module.exports = (function ()
@@ -98,7 +100,8 @@ module.exports = (function ()
         {
             this._id = ulid();
             this._server = server;
-            /** @type {JsonRpcPeer} */this._peer = new JsonRpcPeer();
+            /** @type {JsonRpcPeer} */this._peer = null;
+            this._timeoutCtxMap = new StringKeyMap();
 
             /** @type {Timeout} */this._timer = null;
             this._timerValue = 0;
@@ -195,16 +198,59 @@ module.exports = (function ()
 
                     return result;
                 });
+                peer.setRpcHandler("notifyAfter", (peer, req) =>
+                {
+                    const { id, timeoutInMs } = req.params;
+
+                    if(!isString(id))
+                    {
+                        throw new TypeError("'id' must be a string.");
+                    }
+                    if(this._timeoutCtxMap.get(id))
+                    {
+                        throw new Error(`${ id } already exists.`);
+                    }
+
+                    if(!Number.isSafeInteger(timeoutInMs))
+                    {
+                        throw new TypeError("'timeoutInMs' must be a safe-integer.");
+                    }
+
+                    this._timeoutCtxMap.set(
+                        id,
+                        {
+                            id,
+                            timeout : setTimeout(() =>
+                            {
+                                this._timeoutCtxMap["delete"](id);
+
+                                if(JsonRpcPeerState.OPENED === this._peer.getState())
+                                {
+                                    this._peer.request({
+                                        method : "notifyAfter",
+                                        params : {
+                                            id,
+                                            timeoutInMs,
+                                            timestamp : new Date().getTime(),
+                                        },
+                                    });
+                                }
+                            }, timeoutInMs),
+                        }
+                    );
+
+                    return null;
+                });
 
                 await peer.open(ws);
             }
             catch(error)
             {
-                setTimeout(() =>
+                setTimeout(async () =>
                 {
                     try
                     {
-                        this.close();
+                        await this.close();
                     }
                     catch(error)
                     {
@@ -218,6 +264,12 @@ module.exports = (function ()
 
         async close()
         {
+            this._timeoutCtxMap.forEach(function (ctx)
+            {
+                clearTimeout(ctx.timeout);
+            });
+            this._timeoutCtxMap.clear();
+
             this._server._sessions["delete"](this._id);
 
             const peer = this._peer;

@@ -9,6 +9,7 @@ var StringKeyMap = kapheinJsCollection.StringKeyMap;
 var EventEmitter = require("kaphein-js-event-emitter").EventEmitter;
 
 var WebSocketClosedError = require("./web-socket-closed-error").WebSocketClosedError;
+var WaitCanceledError = require("./wait-canceled-error").WaitCanceledError;
 var JsonRpcError = require("./json-rpc-error").JsonRpcError;
 var JsonRpcPredefinedErrorCode = require("./json-rpc-error").JsonRpcPredefinedErrorCode;
 
@@ -45,6 +46,9 @@ module.exports = (function ()
      *  @typedef {import("./json-rpc-peer").JsonRpcPeerEventListenerMap} JsonRpcPeerEventListenerMap
      *  @typedef {import("./json-rpc-peer").JsonRpcNonJsonRpcMessageHandler} JsonRpcNonJsonRpcMessageHandler
      *  @typedef {import("./json-rpc-peer").JsonRpcNonJsonMessageHandler} JsonRpcNonJsonMessageHandler
+     */
+    /**
+     *  @typedef {import("./json-rpc-peer").JsonRpcWaitHandle<any>} AnyJsonRpcWaitHandle
      */
 
     /**
@@ -126,6 +130,7 @@ module.exports = (function ()
         this._wsOwned = false;
         /** @type {EventEmitter<JsonRpcPeerEventListenerMap>} */this._evtEmt = new EventEmitter(evtEmtOption);
         /** @type {any} */this._dfltCtx = this;
+        /** @type {Map<string, AnyJsonRpcWaitHandle>} */this._hWaitMap = new StringKeyMap();
         this._nvocs = new StringKeyMap(/** @type {Iterable<[string, JsonRpcInvocation]>} */(null));
         this._xecs = new StringKeyMap(/** @type {Iterable<[string, JsonRpcExecution]>} */(null));
         this._rpcHandlers = new StringKeyMap(/** @type {Iterable<[string, JsonRpcFunction]>} */(null));
@@ -298,6 +303,90 @@ module.exports = (function ()
         request : function request(req)
         {
             return _invokeRemote(this, req, Object.assign({}, arguments[1]));
+        },
+
+        waitFor : function waitFor(method)
+        {
+            var timeoutInMs = arguments[1];
+            if(!Number.isSafeInteger(timeoutInMs) || timeoutInMs < 0)
+            {
+                timeoutInMs = -1;
+            }
+
+            var handle = this._hWaitMap.get(method);
+            if(!handle)
+            {
+                var ctx = {
+                    handle : null,
+                    cancel : null,
+                    _peer : this,
+                    _timeoutId : null,
+                    _resolve : null,
+                    _reject : null
+                };
+                handle = new Promise((function (resolve, reject)
+                {
+                    this.cancel = function cancel()
+                    {
+                        reject(new WaitCanceledError(arguments[0], arguments[1]));
+                    };
+                    this._resolve = resolve;
+                    this._reject = reject;
+
+                    if(timeoutInMs >= 0)
+                    {
+                        this._timeoutId = setTimeout((function ()
+                        {
+                            this.handle.cancel("Wait handle timeout.");
+                        }).bind(this), timeoutInMs);
+                    }
+                }).bind(ctx))
+                    .then((function (request)
+                    {
+                        this._request = request;
+                    }).bind(ctx))
+                    .catch((function (error)
+                    {
+                        this._error = error;
+                    }).bind(ctx))
+                    .then((function ()
+                    {
+                        var request;
+
+                        var timeoutId = this._timeoutId;
+                        if(timeoutId)
+                        {
+                            clearTimeout(timeoutId);
+                        }
+
+                        var handle = this.handle;
+                        var peer = this._peer;
+                        if(peer._hWaitMap.get(method) === handle)
+                        {
+                            peer._hWaitMap["delete"](method);
+                        }
+
+                        if("_error" in this)
+                        {
+                            throw this._error;
+                        }
+
+                        if("_request" in this)
+                        {
+                            request = this._request;
+                        }
+
+                        return request;
+                    }).bind(ctx))
+                ;
+                handle.cancel = ctx.cancel;
+                handle._resolve = ctx._resolve;
+                handle._reject = ctx._reject;
+                ctx.handle = handle;
+                this._hWaitMap.set(method, handle);
+            }
+
+            return handle;
         }
     };
 
@@ -756,10 +845,15 @@ module.exports = (function ()
     {
         var WebSocket = thisRef._WebSocket;
 
-        thisRef._state = State.CLOSING;
-
         return new Promise(function (resolve)
         {
+            thisRef._state = State.CLOSING;
+
+            thisRef._hWaitMap.forEach(function (h)
+            {
+                h.cancel("The JSON-RPC peer has been closed.");
+            });
+
             thisRef._nvocs.forEach(function (nvoc)
             {
                 var id = nvoc.request.id;
@@ -1089,14 +1183,10 @@ module.exports = (function ()
                 isSingle = true;
             }
 
-            var i;
-            var tasks = [];
-            for(i = 0; i < reqs.length; ++i)
+            resolve(Promise.all(reqs.map(function (req)
             {
-                tasks.push(_callRpcHandler(thisRef, reqs[i]));
-            }
-
-            resolve(Promise.all(tasks));
+                return _callRpcHandler(thisRef, req);
+            })));
         })
             .then(function (responses)
             {
@@ -1122,6 +1212,7 @@ module.exports = (function ()
     function _callRpcHandler(thisRef, req)
     {
         var id = req.id;
+        var method = req.method;
 
         return new Promise(function (resolve)
         {
@@ -1141,7 +1232,6 @@ module.exports = (function ()
                 }
             }
 
-            var method = req.method;
             if(!isString(method))
             {
                 throw new JsonRpcError(JsonRpcPredefinedErrorCode.INVALID_REQUEST);
@@ -1160,6 +1250,12 @@ module.exports = (function ()
                     promise : null
                 };
                 thisRef._xecs.set(id, xec);
+            }
+
+            var hWait = thisRef._hWaitMap.get(method);
+            if(hWait)
+            {
+                hWait._resolve(req);
             }
 
             var rpcHandler = (thisRef._rpcHandlers.get(method) || thisRef._dfltRpcHandler || null);

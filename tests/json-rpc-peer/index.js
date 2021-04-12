@@ -26,4 +26,5 @@ module.exports = function ()
     describe("rpc-call", require("./suites/rpc-call.test").bind(this));
     describe("multiple-rpc-call", require("./suites/multiple-rpc-call.test").bind(this));
     describe("notification", require("./suites/notification.test").bind(this));
+    describe("waitFor", require("./suites/wait-for.test").bind(this));
 };

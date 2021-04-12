@@ -1,4 +1,5 @@
 export * from "./web-socket-closed-error";
+export * from "./wait-canceled-error";
 export * from "./json-rpc-error-json";
 export * from "./json-rpc-request-json";
 export * from "./json-rpc-notification-json";

@@ -92,6 +92,11 @@ export declare class JsonRpcPeer implements EventListenable<JsonRpcPeerEventList
         requests : Omit<JsonRpcRequestJson<any>, "jsonrpc">[],
         option? : JsonRpcRequestOption
     ) : Promise<JsonRpcRequestReturnValue[]>;
+
+    public waitFor<Params = any>(
+        method : string,
+        timeoutInMs? : number
+    ) : JsonRpcWaitHandle<Params>;
 }
 
 export declare type JsonRpcFunction = (
@@ -160,3 +165,27 @@ export declare interface JsonRpcRequestOption
 export declare type JsonRpcPeerEventListenerMap = {
     [ K in keyof JsonRpcPeerEventMap ] : (e : JsonRpcPeerEventMap[K]) => void
 };
+
+export declare interface JsonRpcWaitHandle<
+    Params = any
+>
+{
+    then<
+        TResult1 = JsonRpcRequestJson<Params>,
+        TResult2 = never
+    >(
+        onfulfilled? : ((value : JsonRpcRequestJson<Params>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+        onrejected? : ((reason : any) => TResult2 | PromiseLike<TResult2>) | undefined | null
+    ) : Promise<TResult1 | TResult2>;
+
+    catch<
+        TResult = never
+    >(
+        onrejected? : ((reason : any) => TResult | PromiseLike<TResult>) | undefined | null
+    ) : Promise<JsonRpcRequestJson<Params> | TResult>;
+
+    cancel(
+        message? : string | null,
+        data? : any
+    ) : void;
+}
