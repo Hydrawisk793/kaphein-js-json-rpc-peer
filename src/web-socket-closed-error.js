@@ -7,8 +7,8 @@ module.exports = (function ()
         Error,
         /**
          *  @constructor
-         *  @param {string} message
-         *  @param {number} closeCode
+         *  @param {string} [message]
+         *  @param {number} [closeCode]
          */
         function WebSocketClosedError()
         {
@@ -20,6 +20,10 @@ module.exports = (function ()
             {
                 Error.captureStackTrace(this, WebSocketClosedError);
             }
+        },
+        function (arg0)
+        {
+            return [arg0];
         },
         {}
     );

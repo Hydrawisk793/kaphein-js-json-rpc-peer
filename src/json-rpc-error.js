@@ -73,6 +73,12 @@ module.exports = (function ()
                 }
             }
         },
+        function (arg0)
+        {
+            return [
+                ((arg0 instanceof Error) ? arg0.message : (isString(arg0) ? arg0 : void 0))
+            ];
+        },
         {
             hasData : function hasData()
             {
