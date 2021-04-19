@@ -8,7 +8,7 @@ module.exports = (function ()
 
     return {
         entry : path.resolve(__dirname, "src", "index.js"),
-        target : "web",
+        target : "es3",
         output : {
             filename : "index.js",
             path : path.resolve(__dirname, outputDirectoryName),
