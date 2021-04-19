@@ -35,7 +35,7 @@
         "kaphein-js-collection": ">=0.1.0 <0.4.0",
         "kaphein-js-event-emitter": "~0.1.2",
         "kaphein-js-object-utils": ">=0.1.0 <0.3.0",
-        "kaphein-js-type-trait": ">=0.1.0 <0.3.0",
+        "kaphein-js-type-trait": "~0.3.0",
         "ulid": "^2.3.0"
     },
     "devDependencies": {
