@@ -1,6 +1,6 @@
 {
     "name": "kaphein-js-json-rpc-peer",
-    "version": "0.5.1",
+    "version": "0.5.2",
     "description": "A JSON RPC peer implementation based on web socket client.",
     "author": "Hydrawisk793",
     "license": "MIT",
